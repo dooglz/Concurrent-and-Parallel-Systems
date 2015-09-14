@@ -11,6 +11,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "003-ThreadParameters", "003
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "004-Lambdas", "004-Lambdas\004-Lambdas.vcxproj", "{63867532-BBF4-47A1-9A4F-7FF1DA17AEF6}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "005-MonteCarlo", "005-MonteCarlo\005-MonteCarlo.vcxproj", "{36AD9341-0035-44D0-9E39-DC33425AF7E0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -33,6 +35,10 @@ Global
 		{63867532-BBF4-47A1-9A4F-7FF1DA17AEF6}.Debug|Win32.Build.0 = Debug|Win32
 		{63867532-BBF4-47A1-9A4F-7FF1DA17AEF6}.Release|Win32.ActiveCfg = Release|Win32
 		{63867532-BBF4-47A1-9A4F-7FF1DA17AEF6}.Release|Win32.Build.0 = Release|Win32
+		{36AD9341-0035-44D0-9E39-DC33425AF7E0}.Debug|Win32.ActiveCfg = Debug|Win32
+		{36AD9341-0035-44D0-9E39-DC33425AF7E0}.Debug|Win32.Build.0 = Debug|Win32
+		{36AD9341-0035-44D0-9E39-DC33425AF7E0}.Release|Win32.ActiveCfg = Release|Win32
+		{36AD9341-0035-44D0-9E39-DC33425AF7E0}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
