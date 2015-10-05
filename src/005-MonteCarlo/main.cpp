@@ -14,31 +14,33 @@ unsigned int total_circle;
 mutex total_points_mutex;
 mutex total_circle_mutex;
 
+#define MIN_THREADS 8
+#define MAX_THREADS 8
+#define LOOPS 10
+#define MIN_POWER 8
+#define MAX_POWER 32
 // Create a distribution
 // uniform_real_distribution<double> distribution(0.0, 1.0);
 // Use this to get a random value from our random engine e
 // auto x = distribution(e);
 
-template <typename T>
-T average(T t[], int n)
-{
-	T s = t[n - 1];
-	for (int i = 0; i < (n - 1); i++)
-		s += t[i];
-	return s / n;
+template <typename T> T average(T t[], int n) {
+  T s = t[n - 1];
+  for (int i = 0; i < (n - 1); i++)
+    s += t[i];
+  return s / n;
 }
-unsigned int correct_pi_digits(double p){
-	double actualPI = 3.1415926535897931;
-	unsigned int i;
-	for (i = 1; i < 16; i++)
-	{
-		double multiple = pow(10.0, i);
-		double a = trunc(multiple * p);
-		double b = trunc(multiple * actualPI);
-		if (a != b)
-			break;
-	}
-	return i;
+unsigned int correct_pi_digits(double p) {
+  double actualPI = 3.1415926535897931;
+  unsigned int i;
+  for (i = 1; i < 16; i++) {
+    double multiple = pow(10.0, i);
+    double a = trunc(multiple * p);
+    double b = trunc(multiple * actualPI);
+    if (a != b)
+      break;
+  }
+  return i;
 }
 
 void monte_carlo_pi(unsigned int iterations) {
@@ -57,7 +59,7 @@ void monte_carlo_pi(unsigned int iterations) {
     auto x = distribution(e);
     auto y = distribution(e);
     // Get length of vector defined - use Pythagarous
-    auto length = sqrt((x * x) + (y * y));
+    auto length = abs(x * x) + abs(y * y);
     // Check if in circle
     if (length <= 1.0)
       ++in_circle;
@@ -74,30 +76,31 @@ void monte_carlo_pi(unsigned int iterations) {
   // auto pi = (4.0 * in_circle) / static_cast<double>(iterations);
   // cout << pi << endl;
 }
-const unsigned int loops = 5;
+
 int main() {
-	cout << correct_pi_digits(3.1415926535897931) << endl;
-	cout << correct_pi_digits(3.141592) << endl;
-	cout << correct_pi_digits(3.1435926535897931) << endl;
   // Create data file
   ofstream data("montecarlo.csv", ofstream::out);
-  data << "numbers per thread, threads, Avg Time(ms), Avg PI, Avg Error"<< endl;
-  for (unsigned int total_numbers = 8; total_numbers <= 32; ++total_numbers) {
-	  cout << "\n total_numbers = " << total_numbers <<" - " << pow(2.0, total_numbers - 1) << endl;
-    for (unsigned int num_threads = 1; num_threads <= 32; ++num_threads) {
+  data << "numbers per thread, threads, Avg Time(ms), Avg PI, Avg Error"
+       << endl;
+  for (unsigned int total_numbers = 1024; true;
+       total_numbers+= 1024) {
+    cout << "\n total_numbers = " << total_numbers << " - "
+         << total_numbers << endl;
+    for (unsigned int num_threads = MIN_THREADS; num_threads <= MAX_THREADS;
+         ++num_threads) {
       unsigned int thread_iterations =
-		  static_cast<unsigned int>(pow(2.0, total_numbers - 1) / num_threads);
+          static_cast<unsigned int>(total_numbers / num_threads);
       if (thread_iterations < 3) {
-		  continue;
+        continue;
       }
       // Write number of threads
       // cout << "Number of threads = " << num_threads << ", Numbers per thread
       // = " << thread_iterations << endl;
       // Write number of threads to the file
-	  double* pi_values = new double[loops];
-	  long long* times = new long long[loops];
-	  double* errors = new double[loops];
-      for (unsigned int iters = 0; iters < loops; ++iters) {
+      unsigned int pi_digits[LOOPS];
+      long long times[LOOPS];
+      double errors[LOOPS];
+      for (unsigned int iters = 0; iters < LOOPS; ++iters) {
         {
           std::lock_guard<std::mutex> lock(total_points_mutex);
           total_points = 0;
@@ -129,25 +132,25 @@ int main() {
         double pi = (4.0 * total_circle) / static_cast<double>(total_points);
         long long ms = duration_cast<milliseconds>(total).count();
         double actualPI = 3.1415926535897931;
-		double error = abs((pi - actualPI) / actualPI) * 100.0;
-		pi_values[iters] = pi;
-		times[iters] = ms;
-		errors[iters] = error;
+        double error = abs((pi - actualPI) / actualPI) * 100.0;
+        pi_digits[iters] = correct_pi_digits(pi);
+        times[iters] = ms;
+        errors[iters] = error;
 
-		/*
+        /*
         cout << num_threads << " threads computed Pi: " << pi << " In: " << ms
              << " milliseconds, Error: " << error << "%" << endl;
         data << ", " << ms << "ms";
-		*/
+        */
       }
-	  auto avg_pi = average(pi_values, loops);
-	  auto avg_time = average(times, loops);
-	  auto avg_err = average(errors, loops);
-	  cout << num_threads << " threads\tnumbers " << thread_iterations << "\t" << avg_pi << "\t" << avg_time << "ms\tscore " << correct_pi_digits(avg_pi) << " " << std::string(correct_pi_digits(avg_pi), '#') << endl;
-	  data << total_numbers << "," << num_threads << "," << avg_time << "," << avg_pi << "," << avg_err << endl;
-	  delete pi_values;
-	  delete times;
-	  delete errors;
+      auto avg_digits = floor(average(pi_digits, LOOPS));
+      auto avg_time = average(times, LOOPS);
+      auto avg_err = average(errors, LOOPS);
+      cout << num_threads << " threads\tnumbers " << thread_iterations << "\t"
+           << avg_time << "ms\tscore " << avg_digits << " "
+           << std::string(avg_digits, '#') << endl;
+      data << total_numbers << "," << num_threads << "," << avg_time << ","
+           << avg_digits << "," << avg_err << endl;
       data << endl;
     }
   }
