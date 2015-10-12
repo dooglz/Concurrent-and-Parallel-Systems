@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
-VisualStudioVersion = 12.0.21005.1
+VisualStudioVersion = 12.0.30501.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "001-HelloWorld", "001-HelloWorld\001-HelloWorld.vcxproj", "{8EE81977-7B5A-408E-BB67-1D890DBF1BD8}"
 EndProject
@@ -12,6 +12,8 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "004-Lambdas", "004-Lambdas\004-Lambdas.vcxproj", "{63867532-BBF4-47A1-9A4F-7FF1DA17AEF6}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "005-MonteCarlo", "005-MonteCarlo\005-MonteCarlo.vcxproj", "{36AD9341-0035-44D0-9E39-DC33425AF7E0}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cw1", "cw1\cw1.vcxproj", "{A9F718D5-82B9-4B00-B7BE-12AF043BE289}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +41,10 @@ Global
 		{36AD9341-0035-44D0-9E39-DC33425AF7E0}.Debug|Win32.Build.0 = Debug|Win32
 		{36AD9341-0035-44D0-9E39-DC33425AF7E0}.Release|Win32.ActiveCfg = Release|Win32
 		{36AD9341-0035-44D0-9E39-DC33425AF7E0}.Release|Win32.Build.0 = Release|Win32
+		{A9F718D5-82B9-4B00-B7BE-12AF043BE289}.Debug|Win32.ActiveCfg = Debug|Win32
+		{A9F718D5-82B9-4B00-B7BE-12AF043BE289}.Debug|Win32.Build.0 = Debug|Win32
+		{A9F718D5-82B9-4B00-B7BE-12AF043BE289}.Release|Win32.ActiveCfg = Release|Win32
+		{A9F718D5-82B9-4B00-B7BE-12AF043BE289}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
