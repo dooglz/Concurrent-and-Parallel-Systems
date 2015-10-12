@@ -254,8 +254,12 @@ int start() {
   int *ipivot = new int[SIZE];
 
   // Main application
-  fillArray(a, SIZE, b);
+  auto aa = fillArray(a, SIZE, b);
+  intarray2bmp::intarray2bmp<double>("lol3.bmp", &(a[0]), SIZE, SIZE, -aa, aa);
   run(a, b, SIZE, ipivot);
+
+  intarray2bmp::intarray2bmp<double>("lol4.bmp", &(a[0]), SIZE, SIZE, -aa, aa);
+
   validate(a, b, x, SIZE);
 
   // Free the memory
