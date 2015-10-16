@@ -1,5 +1,7 @@
 #include <iostream>
+#include <assert.h>
 #include "sequential.h"
+#include "Timer.h"
 
 using namespace std;
 
@@ -101,7 +103,7 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
   int info = 0;
 
   if (nm1 >= 0) {
-    int kp1,l;
+    int kp1, l;
     for (int k = 0; k < nm1; ++k) {
       // Set pointer for col_k to relevant column in a
       col_k = &a[k][0];
@@ -143,7 +145,7 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
   }
 
   ipivot[n - 1] = n - 1;
-  if (a[n - 1][n - 1] == 0){
+  if (a[n - 1][n - 1] == 0) {
     info = n - 1;
   }
 
@@ -154,9 +156,9 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
 double ddot(int n, double *dx, int dx_off, double *dy, int dy_off) {
   double temp = 0.0;
   if (n > 0) {
-      for (int i = 0; i < n; ++i){
-        temp += dx[i + dx_off] * dy[i + dy_off];
-      }
+    for (int i = 0; i < n; ++i) {
+      temp += dx[i + dx_off] * dy[i + dy_off];
+    }
   }
   return temp;
 }
@@ -202,10 +204,7 @@ void dmxpy(int n1, double *y, int n2, double *x, double **m) {
 }
 
 // Runs the benchmark
-void run(double **a, double *b, int n, int *ipivot) {
-  gaussian_eliminate(a, n, ipivot);
-  dgesl(a, n, ipivot, b);
-}
+void run(double **a, double *b, int n, int *ipivot) {}
 
 // Validates the result
 void validate(double **a, double *b, double *x, int n) {
@@ -215,7 +214,7 @@ void validate(double **a, double *b, double *x, int n) {
   }
 
   // reset A and B arrays to orignal rand values
-  double biggestA = fillArray(a,n, b);
+  double biggestA = fillArray(a, n, b);
 
   for (int i = 0; i < n; ++i) {
     b[i] = -b[i];
@@ -231,46 +230,72 @@ void validate(double **a, double *b, double *x, int n) {
     biggestX = (biggestX > abs(x[i])) ? biggestX : abs(x[i]);
   }
 
-  double residn = biggestB / (n * biggestA * biggestX * (2.2204460492503131e-016));
+  double residn =
+      biggestB / (n * biggestA * biggestX * (2.2204460492503131e-016));
+  assert(residn < CHECK_VALUE);
+  /*
   if (residn > CHECK_VALUE) {
-    cout << "Validation failed!" << endl;
-    cout << "Computed Norm Res = " << residn << endl;
-    cout << "Reference Norm Res = " << CHECK_VALUE << endl;
+    assert(false);
+     cout << "Validation failed!" << endl;
+     cout << "Computed Norm Res = " << residn << endl;
+     cout << "Reference Norm Res = " << CHECK_VALUE << endl;
   } else {
-    cout << "Calculations are correct!" << endl;
-    cout << "Computed Norm Res = " << residn << endl;
-    cout << "Reference Norm Res = " << CHECK_VALUE << endl;
+     cout << "Calculations are correct!" << endl;
+     cout << "Computed Norm Res = " << residn << endl;
+     cout << "Reference Norm Res = " << CHECK_VALUE << endl;
   }
+  */
 }
 
-int start() {
-  // Allocate data on the heap
-  double **a = new double *[SIZE];
-  for (size_t i = 0; i < SIZE; ++i) {
-    a[i] = new double[SIZE];
+int start(const unsigned int runs) {
+  ResultFile r;
+  r.name = "Sequential LinPack" + to_string(runs);
+  r.headdings = {"Allocate Memory", "Create Input Numbers",
+                 " gaussian_eliminate", "Solve", "Validate"};
+
+  for (size_t i = 0; i < runs; i++) {
+    cout << i << endl;
+    // Allocate data on the heap
+    Timer time_allocate;
+    double **a = new double *[SIZE];
+    for (size_t i = 0; i < SIZE; ++i) {
+      a[i] = new double[SIZE];
+    }
+    double *b = new double[SIZE];
+    double *x = new double[SIZE];
+    int *ipivot = new int[SIZE];
+    time_allocate.Stop();
+
+    // Main application
+    Timer time_genRnd;
+    auto aa = fillArray(a, SIZE, b);
+    time_genRnd.Stop();
+
+    Timer time_gauss;
+    gaussian_eliminate(a, SIZE, ipivot);
+    time_gauss.Stop();
+
+    Timer time_dgesl;
+    dgesl(a, SIZE, ipivot, b);
+    time_dgesl.Stop();
+
+    Timer time_validate;
+    validate(a, b, x, SIZE);
+    time_validate.Stop();
+    r.times.push_back({time_allocate.Duration_NS(), time_genRnd.Duration_NS(),
+                       time_gauss.Duration_NS(), time_dgesl.Duration_NS(),
+                       time_validate.Duration_NS()});
+    // Free the memory
+    for (size_t i = 0; i < SIZE; ++i) {
+      delete[] a[i];
+    }
+    delete[] a;
+    delete[] b;
+    delete[] x;
+    delete[] ipivot;
   }
-  double *b = new double[SIZE];
-  double *x = new double[SIZE];
-  int *ipivot = new int[SIZE];
-
-  // Main application
-  auto aa = fillArray(a, SIZE, b);
-  intarray2bmp::intarray2bmp<double>("lol3.bmp", &(a[0]), SIZE, SIZE, -aa, aa);
-  run(a, b, SIZE, ipivot);
-
-  intarray2bmp::intarray2bmp<double>("lol4.bmp", &(a[0]), SIZE, SIZE, -aa, aa);
-
-  validate(a, b, x, SIZE);
-
-  // Free the memory
-  for (size_t i = 0; i < SIZE; ++i) {
-    delete[] a[i];
-  }
-  delete[] a;
-  delete[] b;
-  delete[] x;
-  delete[] ipivot;
-
+  r.CalcAvg();
+  r.PrintToCSV(r.name);
   return 0;
 }
 }

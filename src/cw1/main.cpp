@@ -7,7 +7,7 @@ const double CHECK_VALUE = 12.0;
 
 int main(int argc, char **argv)
 {
-  seq::start();
+  seq::start(200);
 
   return 0;
 }
