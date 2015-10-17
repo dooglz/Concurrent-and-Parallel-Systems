@@ -35,7 +35,9 @@ Visual studio junk files
 *.user
 *.userosscache
 *.sln.docstates
-
+*.tlog
+*.iobj
+*.ipdb
 # Visual Studio 2015 cache/options directory
 .vs/
 *_i.c

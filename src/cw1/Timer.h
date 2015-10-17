@@ -4,15 +4,28 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
-
 using namespace std;
 
 static const char Spinner(const unsigned int t) {
   char spinners[] = {
-    '|', '/', '-', '\\',
+      '|', '/', '-', '\\',
   };
   return (spinners[t % 4]);
 }
+
+struct SysInfo {
+  uint16_t cpu_cores;
+  uint16_t cpu_logical;
+  uint16_t cpu_hardware_concurrency;
+  string cpu_vendor;
+  string cpu_name;
+  bool cpu_hyperThreaded;
+  const void Print() const;
+  const string toString() const;
+  SysInfo();
+};
+ostream &operator<<(std::ostream &os, const SysInfo &obj);
+static const SysInfo SystemInfo;
 
 struct Timer {
   chrono::steady_clock::time_point start;
