@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 #include <regex>
+#include <cstring>
 using namespace std;
 const void ResultFile::PrintToCSV(const string &filename) {
   time_t rawtime;
@@ -13,11 +14,11 @@ const void ResultFile::PrintToCSV(const string &filename) {
   std::replace(safefilename.begin(), safefilename.end(), ' ', '_');
   std::replace(safefilename.begin(), safefilename.end(), ':', '-');
   safefilename.erase(
-      std::remove(safefilename.begin(), safefilename.end(), '\n'),
-      safefilename.end());
+    std::remove(safefilename.begin(), safefilename.end(), '\n'),
+    safefilename.end());
   safefilename.erase(
-      std::remove(safefilename.begin(), safefilename.end(), '\r'),
-      safefilename.end());
+    std::remove(safefilename.begin(), safefilename.end(), '\r'),
+    safefilename.end());
   ofstream data(safefilename, ofstream::out);
 
   data << "name," << name.c_str() << endl;
@@ -59,6 +60,7 @@ const void ResultFile::PrintToCSV(const string &filename) {
   cout << "Printed to: " << safefilename << endl;
 }
 
+
 const void ResultFile::CalcAvg() {
   averages.clear();
   unsigned long long totalTime = 0;
@@ -69,9 +71,9 @@ const void ResultFile::CalcAvg() {
       total += times[j][i];
       count++;
     }
-    unsigned long long avg = round(total / count);
+    unsigned long long avg = (unsigned long long)round(total / count);
     totalTime += avg;
-    averages.push_back(round(total / count));
+    averages.push_back((unsigned long long)round(total / count));
   }
   averagePercentages.clear();
   for (auto a : averages) {
@@ -80,6 +82,8 @@ const void ResultFile::CalcAvg() {
 }
 
 const void SysInfo::Print() const {
+  cout << "Optimised Code:\t" << prog_optimisation << endl;
+  cout << "Debug Mode:\t" << prog_debugMode << endl;
   cout << "Cpu Vendor:\t" << cpu_vendor << endl;
   cout << "Cpu Name:\t" << cpu_name << endl;
   cout << "Cpu Loigcal:\t" << cpu_logical << endl;
@@ -88,11 +92,15 @@ const void SysInfo::Print() const {
   cout << "Cpu HYPTH:\t" << (cpu_hyperThreaded ? "true" : "false") << endl;
 }
 const string SysInfo::toString() const {
-  return ("Cpu Vendor," + cpu_vendor + "\nCpu Name," + cpu_name +
-          "\nCpu Loigcal," + to_string(cpu_logical) + "\nCpu Cores," +
-          to_string(cpu_cores) + "\nCpu HYPTH," +
-          (cpu_hyperThreaded ? "true" : "false") + "\nCpu HWC," +
-          to_string(cpu_hardware_concurrency));
+  return ("Optimised Code," +
+    (prog_optimisation ? std::string("true") : std::string("false")) +
+    "\nDebug Mode," +
+    (prog_debugMode ? std::string("true") : std::string("false")) +
+    "\nCpu Vendor," + cpu_vendor + "\nCpu Name," + cpu_name +
+    "\nCpu Loigcal," + to_string(cpu_logical) + "\nCpu Cores," +
+    to_string(cpu_cores) + "\nCpu HYPTH," +
+    (cpu_hyperThreaded ? "true" : "false") + "\nCpu HWC," +
+    to_string(cpu_hardware_concurrency));
 }
 
 ostream &operator<<(std::ostream &os, const SysInfo &obj) {
@@ -105,9 +113,9 @@ void cpuID(unsigned i, unsigned regs[4]) {
 
 #else
   asm volatile("cpuid"
-               : "=a"(regs[0]), "=b"(regs[1]), "=c"(regs[2]), "=d"(regs[3])
-               : "a"(i), "c"(0));
-// ECX is set to zero for CPUID function 4
+    : "=a"(regs[0]), "=b"(regs[1]), "=c"(regs[2]), "=d"(regs[3])
+    : "a"(i), "c"(0));
+  // ECX is set to zero for CPUID function 4
 #endif
 }
 
@@ -153,7 +161,7 @@ const string SysInfo::get_cpu_name()const {
   cpuID(0x80000000, regs);
   unsigned int nExIds = regs[0];
   memset(CPUBrandString, 0, sizeof(CPUBrandString));
-  for (int i = 0x80000000; i <= nExIds; ++i) {
+  for (unsigned int i = 0x80000000; i <= nExIds; ++i) {
     cpuID(i, regs);
     if (i == 0x80000002)
       memcpy(CPUBrandString, regs, sizeof(regs));
@@ -164,7 +172,7 @@ const string SysInfo::get_cpu_name()const {
   }
   string cpu_name = string(CPUBrandString);
   // removing leading, trailing and extra spaces
-  cpu_name = std::regex_replace(cpu_name, std::regex("^ +| +$|( ) +"), "$1");
+  cpu_name = regex_replace(cpu_name, regex("^ +| +$|( ) +"), string("$1"));
   return cpu_name;
 
 }
@@ -173,7 +181,7 @@ const bool SysInfo::get_cpu_hyperThreaded()const {
   cpuID(1, regs);
   unsigned cpuFeatures = regs[3]; // EDX
   return  cpuFeatures & (1 << 28) && cpu_cores < cpu_logical;
- }
+}
 
 SysInfo::SysInfo()
   : cpu_cores(get_cpu_cores()), cpu_logical(get_cpu_logical()),
