@@ -112,7 +112,42 @@ void cpuID(unsigned i, unsigned regs[4]) {
 }
 
 // https://stackoverflow.com/questions/150355/
-SysInfo::SysInfo() {
+
+const uint16_t SysInfo::get_cpu_cores()const {
+  uint16_t cpu_cores = get_cpu_logical();
+  unsigned int regs[4];
+  if (get_cpu_vendor() == "GenuineIntel") {
+    // Get DCP cache info
+    cpuID(4, regs);
+    cpu_cores = ((regs[0] >> 26) & 0x1f) + 1; // EAX[31:26] + 1
+
+  }
+  else if (get_cpu_vendor() == "AuthenticAMD") {
+    // Get NC: Number of CPU cores - 1
+    cpuID(0x80000008, regs);
+    cpu_cores = ((unsigned)(regs[2] & 0xff)) + 1; // ECX[7:0] + 1
+  }
+  return cpu_cores;
+}
+
+const uint16_t SysInfo::get_cpu_logical()const {
+  unsigned int regs[4];
+  cpuID(1, regs);
+  return (regs[1] >> 16) & 0xff; // EBX[23:16]
+}
+
+const string SysInfo::get_cpu_vendor()const {
+  // Get vendor
+  char vendor[12];
+  unsigned int regs[4];
+  cpuID(0, regs);
+  ((unsigned *)vendor)[0] = regs[1]; // EBX
+  ((unsigned *)vendor)[1] = regs[3]; // EDX
+  ((unsigned *)vendor)[2] = regs[2]; // ECX
+  return string(vendor, 12);
+}
+
+const string SysInfo::get_cpu_name()const {
   unsigned int regs[4];
   char CPUBrandString[64];
   cpuID(0x80000000, regs);
@@ -127,38 +162,22 @@ SysInfo::SysInfo() {
     else if (i == 0x80000004)
       memcpy(CPUBrandString + 32, regs, sizeof(regs));
   }
-  cpu_name = string(CPUBrandString);
+  string cpu_name = string(CPUBrandString);
   // removing leading, trailing and extra spaces
   cpu_name = std::regex_replace(cpu_name, std::regex("^ +| +$|( ) +"), "$1");
-  // Get vendor
-  char vendor[12];
-  cpuID(0, regs);
-  ((unsigned *)vendor)[0] = regs[1]; // EBX
-  ((unsigned *)vendor)[1] = regs[3]; // EDX
-  ((unsigned *)vendor)[2] = regs[2]; // ECX
-  cpu_vendor = string(vendor, 12);
+  return cpu_name;
 
-  // Get CPU features
+}
+const bool SysInfo::get_cpu_hyperThreaded()const {
+  unsigned int regs[4];
   cpuID(1, regs);
   unsigned cpuFeatures = regs[3]; // EDX
+  return  cpuFeatures & (1 << 28) && cpu_cores < cpu_logical;
+ }
 
-  // Logical core count per CPU
-  cpuID(1, regs);
-  cpu_logical = (regs[1] >> 16) & 0xff; // EBX[23:16]
-  cpu_cores = cpu_logical;
-
-  if (cpu_vendor == "GenuineIntel") {
-    // Get DCP cache info
-    cpuID(4, regs);
-    cpu_cores = ((regs[0] >> 26) & 0x3f) + 1; // EAX[31:26] + 1
-
-  } else if (cpu_vendor == "AuthenticAMD") {
-    // Get NC: Number of CPU cores - 1
-    cpuID(0x80000008, regs);
-    cpu_cores = ((unsigned)(regs[2] & 0xff)) + 1; // ECX[7:0] + 1
-  }
-
-  // Detect hyper-threads
-  cpu_hyperThreaded = cpuFeatures & (1 << 28) && cpu_cores < cpu_logical;
-  cpu_hardware_concurrency = std::thread::hardware_concurrency();
+SysInfo::SysInfo()
+  : cpu_cores(get_cpu_cores()), cpu_logical(get_cpu_logical()),
+  cpu_hardware_concurrency(std::thread::hardware_concurrency()),
+  cpu_name(get_cpu_name()), cpu_vendor(get_cpu_vendor()),
+  cpu_hyperThreaded(get_cpu_hyperThreaded()) {
 }

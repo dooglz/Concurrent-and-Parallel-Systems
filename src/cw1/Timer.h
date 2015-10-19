@@ -4,26 +4,28 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
+
 using namespace std;
 
-static const char Spinner(const unsigned int t) {
-  char spinners[] = {
-      '|', '/', '-', '\\',
-  };
-  return (spinners[t % 4]);
-}
-
 struct SysInfo {
-  uint16_t cpu_cores;
-  uint16_t cpu_logical;
-  uint16_t cpu_hardware_concurrency;
-  string cpu_vendor;
-  string cpu_name;
-  bool cpu_hyperThreaded;
-  const void Print() const;
-  const string toString() const;
-  SysInfo();
+  private:
+    const uint16_t get_cpu_cores() const;
+    const uint16_t get_cpu_logical()const;
+    const string get_cpu_vendor()const;
+    const string get_cpu_name()const;
+    const bool get_cpu_hyperThreaded()const;
+  public:
+    const uint16_t cpu_cores;
+    const uint16_t cpu_logical;
+    const uint16_t cpu_hardware_concurrency;
+    const string cpu_vendor;
+    const string cpu_name;
+    const bool cpu_hyperThreaded;
+    const void Print() const;
+    const string toString() const;
+    SysInfo();
 };
+
 ostream &operator<<(std::ostream &os, const SysInfo &obj);
 static const SysInfo SystemInfo;
 
