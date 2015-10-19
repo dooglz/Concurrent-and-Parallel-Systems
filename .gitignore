@@ -75,3 +75,4 @@ ipch/
 *.psess
 *.vsp
 *.vspx
+*.tlog
