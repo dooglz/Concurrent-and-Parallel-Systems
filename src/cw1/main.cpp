@@ -1,4 +1,5 @@
 #include "sequential.h"
+#include "openMP.h"
 #include "Timer.h"
 #include <iostream>
 
@@ -9,7 +10,7 @@ const double CHECK_VALUE = 12.0;
 
 int main(int argc, char **argv) {
   SystemInfo.Print();
-  seq::start(10);
-
+  //seq::start(100);
+  par::start(5);
   return 0;
 }

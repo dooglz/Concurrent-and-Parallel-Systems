@@ -50,11 +50,14 @@ struct Timer {
   Timer() { Start(); }
   void Start() { start = chrono::steady_clock::now(); }
   void Stop() { end = chrono::steady_clock::now(); }
-  const chrono::steady_clock::duration Duration() { return end - start; }
-  unsigned long long Duration_NS() {
+  const chrono::steady_clock::duration Duration() const{ return end - start; }
+  const string toString() const;
+  unsigned long long Duration_NS() const {
     return chrono::duration_cast<chrono::nanoseconds>(Duration()).count();
   };
+  const static string format(const unsigned long long NS);
 };
+ostream &operator<<(std::ostream &os, const Timer &obj);
 
 struct ResultFile {
   string name;

@@ -2,9 +2,10 @@
 extern const unsigned int SIZE;
 extern const double CHECK_VALUE;
 
-namespace seq {
+namespace par {
   int start(const unsigned int runs);
 }
 #include <fstream>
 #include <iostream>
 #include <string>
+

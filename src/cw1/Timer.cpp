@@ -107,6 +107,57 @@ ostream &operator<<(std::ostream &os, const SysInfo &obj) {
   return os << obj.toString();
 }
 
+const string Timer::toString() const {
+  return to_string(Duration_NS());
+}
+
+ostream &operator<<(std::ostream &os, const Timer &obj) {
+  return os << obj.Duration_NS();
+}
+#include <string>
+#include <iomanip>
+#include <sstream>
+const string Timer::format(const unsigned long long NS) {
+  const long thou = (long)(NS / 1000);
+  long milliseconds = thou % 1000;
+  long seconds = ((thou - milliseconds) / 1000) % 60;
+  long minutes = ((((thou - milliseconds) / 1000) - seconds) / 60) % 60;
+  long hours = (((((thou - milliseconds) / 1000) - seconds) / 60) - minutes) / 60;
+
+
+
+  unsigned int ms = 1000;
+  unsigned int s = ms * 1000;
+  unsigned int m = s * 60;
+  std::string str = "";
+  float size = (float)thou;
+  float minus = 0;
+
+  if (size > m) {
+    float a = floor(size / m);
+    minus += a * m;
+    str += std::to_string((int)a);
+    str += "m, ";
+  }
+  if (size > s) {
+    float a = floor((size - minus) / s);
+    minus += a * s;
+    str += std::to_string((int)a);
+    str += "s, ";
+  }
+  if (size > ms) {
+    float a = floor((size - minus) / ms);
+    minus += a * ms;
+    str += std::to_string((int)a);
+    str += "ms, ";
+  }
+  str += std::to_string((int)(size - minus));
+  str += "ns (";
+  str += std::to_string(NS);
+  str += ")";
+  return str;
+}
+
 void cpuID(unsigned i, unsigned regs[4]) {
 #ifdef _WIN32
   __cpuid((int *)regs, (int)i);
