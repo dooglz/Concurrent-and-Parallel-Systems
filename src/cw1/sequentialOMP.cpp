@@ -8,8 +8,9 @@
 
 #define MAX_THREADS 8
 #define PAR_DAXPY 0
-#define SIMD_DAXPY 1
-#define SIMD_L_Loop 0
+#define SIMD_DAXPY256 1
+#define SIMD_DAXPY128 0
+#define SIMD_L_Loop 1
 #define PAR_DAXPY_CACHE 1
 #define cache_line_size 8
 
@@ -118,10 +119,31 @@ void daxpy(unsigned int n, const double scaler, double *dx, double *dy,
     }
   }
 
-#elif SIMD_DAXPY
+#elif SIMD_DAXPY256
   double *const y = &dy[offset];
   double *const x = &dx[offset];
 
+  const __m256d scalers = _mm256_set1_pd(scaler);
+  const int remainder = n % 4;
+  const int nm1 = n - 3;
+
+  for (int i = 0; i < nm1; i += 4) {
+	  //load X
+	  const __m256d xs = _mm256_loadu_pd(&x[i]);
+	  //load y
+	  __m256d ys = _mm256_loadu_pd(&y[i]);
+	  //mutliply X by scalers, add to Y
+	  ys = _mm256_add_pd(ys, _mm256_mul_pd(xs, scalers));
+	  //load back into y
+	  _mm256_storeu_pd(&y[i], ys);
+  }
+
+  for (int i = n - remainder; i < n; ++i) {
+	  y[i] += scaler * x[i];
+  }
+#elif SIMD_DAXPY128
+  double *const y = &dy[offset];
+  double *const x = &dx[offset];
   const __m128d scalers = _mm_set1_pd(scaler);
   const int remainder = n % 2;
   const int nm1 = n - 1;
@@ -138,15 +160,16 @@ void daxpy(unsigned int n, const double scaler, double *dx, double *dy,
   }
 
   if (remainder != 0){
-	y[n-1] += scaler * x[n-1];
+	  y[n - 1] += scaler * x[n - 1];
   }
-#else
 
+#else
   double *const y = &dy[offset];
   double *const x = &dx[offset];
   for (int i = 0; i < n; ++i) {
     y[i] += scaler * x[i];
   }
+  
 #endif
 }
 
@@ -311,6 +334,15 @@ int start(const unsigned int runs) {
   omp_set_num_threads(MAX_THREADS);
   ResultFile r;
   r.name = "Sequential LinPack OMP" + to_string(runs);
+  if (SIMD_L_Loop){
+	  r.name += "ParLloopT" + MAX_THREADS;
+  }
+  if (SIMD_DAXPY256){
+	  r.name += "Simd256";
+  }
+  else if (SIMD_DAXPY128){
+	  r.name += "Simd128";
+  }
   r.headdings = {"Allocate Memory", "Create Input Numbers",
                  " gaussian_eliminate", "Solve", "Validate"};
   Timer time_total;
@@ -327,8 +359,7 @@ int start(const unsigned int runs) {
     double *b =
         (double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
 
-	__m128 *ax = (__m128*)_aligned_malloc(SIZE * sizeof(__m128), 16);
-	double *x = (double *)ax;
+    double *x =(double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
 
 
     int *ipivot = (int *)_aligned_malloc(SIZE * sizeof(int), sizeof(int));
@@ -367,8 +398,8 @@ int start(const unsigned int runs) {
     // delete[] x;
     // delete[] ipivot;
   }
-  // r.CalcAvg();
-  // r.PrintToCSV(r.name);
+   r.CalcAvg();
+   r.PrintToCSV(r.name);
   time_total.Stop();
   cout << "Total Time: " << Timer::format(time_total.Duration_NS());
   return 0;
