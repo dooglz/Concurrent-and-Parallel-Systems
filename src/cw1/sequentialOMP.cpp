@@ -6,18 +6,16 @@
 #include "Timer.h"
 #include <algorithm>
 
-#define MAX_THREADS 8
+#define MAX_THREADS 2
 #define PAR_DAXPY 0
-#define SIMD_DAXPY256 1
+#define SIMD_DAXPY256 0
 #define SIMD_DAXPY128 0
 #define SIMD_L_Loop 1
-#define PAR_DAXPY_CACHE 1
-#define cache_line_size 8
-
 using namespace std;
-
 namespace seqOMP {
 
+void (*cdaxpy)(unsigned int, const double, double *, double *, unsigned int);
+int(*cgaussian)(double **, int, int *);
 // Fills A with random doubles, ppopulates b with row sums, returns largest val
 double fillArray(double **a, int n, double *b) {
   double largestValue = 0.0;
@@ -96,18 +94,66 @@ dy      : double vector with n+1 element
 --- Output ---
 dy = da * dx + dy, unchanged if n <= 0
 */
-
-void daxpy(unsigned int n, const double scaler, double *dx, double *dy,
-           unsigned int offset) {
+void daxpyS128(unsigned int n, const double scaler, double *dx, double *dy,
+               unsigned int offset) {
   if ((n <= 0) || (scaler == 0)) {
     return;
   }
+  double *const y = &dy[offset];
+  double *const x = &dx[offset];
+  const __m128d scalers = _mm_set1_pd(scaler);
+  const int remainder = n % 2;
+  const int nm1 = n - 1;
 
-#if PAR_DAXPY
+  for (int i = 0; i < nm1; i += 2) {
+    // load X
+    const __m128d xs = _mm_loadu_pd(&x[i]);
+    // load y
+    __m128d ys = _mm_loadu_pd(&y[i]);
+    // mutliply X by scalers, add to Y
+    ys = _mm_add_pd(ys, _mm_mul_pd(xs, scalers));
+    // load back into y
+    _mm_storeu_pd(&y[i], ys);
+  }
 
+  if (remainder != 0) {
+    y[n - 1] += scaler * x[n - 1];
+  }
+}
+void daxpyS256(unsigned int n, const double scaler, double *dx, double *dy,
+               unsigned int offset) {
+  if ((n <= 0) || (scaler == 0)) {
+    return;
+  }
   double *const y = &dy[offset];
   double *const x = &dx[offset];
 
+  const __m256d scalers = _mm256_set1_pd(scaler);
+  const int remainder = n % 4;
+  const int nm1 = n - 3;
+
+  for (int i = 0; i < nm1; i += 4) {
+    // load X
+    const __m256d xs = _mm256_loadu_pd(&x[i]);
+    // load y
+    __m256d ys = _mm256_loadu_pd(&y[i]);
+    // mutliply X by scalers, add to Y
+    ys = _mm256_add_pd(ys, _mm256_mul_pd(xs, scalers));
+    // load back into y
+    _mm256_storeu_pd(&y[i], ys);
+  }
+
+  for (int i = n - remainder; i < n; ++i) {
+    y[i] += scaler * x[i];
+  }
+}
+void daxpyPar(unsigned int n, const double scaler, double *dx, double *dy,
+              unsigned int offset) {
+  if ((n <= 0) || (scaler == 0)) {
+    return;
+  }
+  double *const y = &dy[offset];
+  double *const x = &dx[offset];
 #pragma omp parallel
   {
     const int thread_id = omp_get_thread_num();
@@ -118,59 +164,16 @@ void daxpy(unsigned int n, const double scaler, double *dx, double *dy,
       y[i] += scaler * x[i];
     }
   }
+}
 
-#elif SIMD_DAXPY256
-  double *const y = &dy[offset];
-  double *const x = &dx[offset];
+void daxpy(unsigned int n, const double scaler, double *dx, double *dy,
+           unsigned int offset) {
 
-  const __m256d scalers = _mm256_set1_pd(scaler);
-  const int remainder = n % 4;
-  const int nm1 = n - 3;
-
-  for (int i = 0; i < nm1; i += 4) {
-	  //load X
-	  const __m256d xs = _mm256_loadu_pd(&x[i]);
-	  //load y
-	  __m256d ys = _mm256_loadu_pd(&y[i]);
-	  //mutliply X by scalers, add to Y
-	  ys = _mm256_add_pd(ys, _mm256_mul_pd(xs, scalers));
-	  //load back into y
-	  _mm256_storeu_pd(&y[i], ys);
-  }
-
-  for (int i = n - remainder; i < n; ++i) {
-	  y[i] += scaler * x[i];
-  }
-#elif SIMD_DAXPY128
-  double *const y = &dy[offset];
-  double *const x = &dx[offset];
-  const __m128d scalers = _mm_set1_pd(scaler);
-  const int remainder = n % 2;
-  const int nm1 = n - 1;
-
-  for (int i = 0; i < nm1; i += 2) {
-	  //load X
-	  const __m128d xs = _mm_loadu_pd(&x[i]);
-	  //load y
-	  __m128d ys = _mm_loadu_pd(&y[i]);
-	  //mutliply X by scalers, add to Y
-	  ys = _mm_add_pd(ys, _mm_mul_pd(xs, scalers));
-	  //load back into y
-	  _mm_storeu_pd(&y[i], ys);
-  }
-
-  if (remainder != 0){
-	  y[n - 1] += scaler * x[n - 1];
-  }
-
-#else
   double *const y = &dy[offset];
   double *const x = &dx[offset];
   for (int i = 0; i < n; ++i) {
     y[i] += scaler * x[i];
   }
-  
-#endif
 }
 
 // Performs Gaussian elimination with partial pivoting
@@ -205,10 +208,7 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
         t = -1.0 / col_k[k];
         scaleVecByConstant(n - kp1, t, col_k, kp1, 1);
 
-// Row elimination with column indexing
-#if SIMD_L_Loop
-#pragma omp parallel for
-#endif
+        // Row elimination with column indexing
         for (int j = kp1; j < n; ++j) {
           // Set pointer for col_j to relevant column in a
           double *col_j = &a[j][0];
@@ -218,7 +218,7 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
             col_j[l] = col_j[k];
             col_j[k] = t;
           }
-          daxpy(n - kp1, t, col_k, col_j, kp1);
+		  cdaxpy(n - kp1, t, col_k, col_j, kp1);
         }
 
       } else
@@ -233,6 +233,65 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
 
   return info;
 }
+// Performs Gaussian elimination with partial pivoting
+int gaussian_eliminatePAR(double **a, int n, int *ipivot) {
+  // Pointers to columns being worked on
+  double *col_k;
+  int nm1 = n - 1;
+  int info = 0;
+
+  if (nm1 >= 0) {
+    int kp1, l;
+    for (int k = 0; k < nm1; ++k) {
+      // Set pointer for col_k to relevant column in a
+      col_k = &a[k][0];
+      kp1 = k + 1;
+
+      // Find pivot index
+      l = indexOfLargestElement(n - k, col_k, k) + k;
+      ipivot[k] = l;
+
+      // Zero pivot means that this column is already triangularized
+      if (col_k[l] != 0) {
+        double t;
+        // Check if we need to interchange
+        if (l != k) {
+          t = col_k[l];
+          col_k[l] = col_k[k];
+          col_k[k] = t;
+        }
+
+        // Compute multipliers
+        t = -1.0 / col_k[k];
+        scaleVecByConstant(n - kp1, t, col_k, kp1, 1);
+
+// Row elimination with column indexing
+#pragma omp parallel for
+        for (int j = kp1; j < n; ++j) {
+          // Set pointer for col_j to relevant column in a
+          double *col_j = &a[j][0];
+
+          double t = col_j[l];
+          if (l != k) {
+            col_j[l] = col_j[k];
+            col_j[k] = t;
+          }
+		  cdaxpy(n - kp1, t, col_k, col_j, kp1);
+        }
+
+      } else
+        info = k;
+    }
+  }
+
+  ipivot[n - 1] = n - 1;
+  if (a[n - 1][n - 1] == 0) {
+    info = n - 1;
+  }
+
+  return info;
+}
+
 /*
 // Performs a dot product calculation of two vectors
 double ddot(int n, double *dx, int dx_off, double *dy, int dy_off) {
@@ -264,7 +323,7 @@ void dgesl(double **a, int n, int *ipivot, double *b) {
         b[k] = t;
       }
 
-      daxpy(n - (k + 1), t, &a[k][0], b, (k + 1));
+	  cdaxpy(n - (k + 1), t, &a[k][0], b, (k + 1));
     }
   }
 
@@ -273,7 +332,7 @@ void dgesl(double **a, int n, int *ipivot, double *b) {
     k = n - (kb + 1);
     b[k] /= a[k][k];
     double t = -b[k];
-    daxpy(k, t, &a[k][0], b, 0);
+	cdaxpy(k, t, &a[k][0], b, 0);
   }
 }
 
@@ -330,21 +389,32 @@ void validate(double **a, double *b, double *x, int n) {
   */
 }
 
-int start(const unsigned int runs) {
-  omp_set_num_threads(MAX_THREADS);
+int start(const unsigned int runs, const unsigned int threadCount,
+          const bool simd128, const bool simd256) {
+
   ResultFile r;
   r.name = "Sequential LinPack OMP" + to_string(runs);
-  if (SIMD_L_Loop){
-	  r.name += "ParLloopT" + MAX_THREADS;
+
+  if (simd256) {
+    cdaxpy = &daxpyS256;
+    r.name += "Simd256";
+  } else if (simd128) {
+    cdaxpy = &daxpyS128;
+    r.name += "Simd128";
+  } else {
+    cdaxpy = &daxpy;
   }
-  if (SIMD_DAXPY256){
-	  r.name += "Simd256";
+  if (threadCount > 1){
+	  unsigned int t = min((unsigned int)omp_get_max_threads(), threadCount);
+	  cgaussian = &gaussian_eliminatePAR;
+	  omp_set_num_threads(t);
+	  r.name += "ParLloopT" + to_string(t);
+  }else{
+	  cgaussian = &gaussian_eliminate;
   }
-  else if (SIMD_DAXPY128){
-	  r.name += "Simd128";
-  }
-  r.headdings = {"Allocate Memory", "Create Input Numbers",
-                 " gaussian_eliminate", "Solve", "Validate"};
+  cout << r.name<< endl;
+ r.headdings = {"Allocate Memory", "Create Input Numbers",
+                   " gaussian_eliminate", "Solve", "Validate"};
   Timer time_total;
   for (size_t i = 0; i < runs; i++) {
     cout << i << endl;
@@ -359,8 +429,8 @@ int start(const unsigned int runs) {
     double *b =
         (double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
 
-    double *x =(double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
-
+    double *x =
+        (double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
 
     int *ipivot = (int *)_aligned_malloc(SIZE * sizeof(int), sizeof(int));
     // double *b = new double[SIZE];
@@ -374,7 +444,7 @@ int start(const unsigned int runs) {
     time_genRnd.Stop();
 
     Timer time_gauss;
-    gaussian_eliminate(a, SIZE, ipivot);
+	cgaussian(a, SIZE, ipivot);
     time_gauss.Stop();
 
     Timer time_dgesl;
@@ -398,8 +468,8 @@ int start(const unsigned int runs) {
     // delete[] x;
     // delete[] ipivot;
   }
-   r.CalcAvg();
-   r.PrintToCSV(r.name);
+  r.CalcAvg();
+  r.PrintToCSV(r.name);
   time_total.Stop();
   cout << "Total Time: " << Timer::format(time_total.Duration_NS());
   return 0;

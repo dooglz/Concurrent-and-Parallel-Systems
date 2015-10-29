@@ -44,5 +44,8 @@
     <ClInclude Include="parallel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ezOptionParser.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -85,6 +85,7 @@
     <ClCompile Include="Timer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ezOptionParser.hpp" />
     <ClInclude Include="parallel.h" />
     <ClInclude Include="sequentialOMP.h" />
     <ClInclude Include="sequential.h" />
