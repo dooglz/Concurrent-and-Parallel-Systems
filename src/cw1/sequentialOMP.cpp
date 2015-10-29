@@ -9,7 +9,7 @@
 #define MAX_THREADS 8
 #define PAR_DAXPY 0
 #define SIMD_DAXPY 0
-#define SIMD_L_Loop 1
+#define SIMD_L_Loop 0
 #define PAR_DAXPY_CACHE 1
 #define cache_line_size 8
 
@@ -96,7 +96,7 @@ dy      : double vector with n+1 element
 dy = da * dx + dy, unchanged if n <= 0
 */
 
-void daxpy(int n, const double scaler, double *dx, double *dy, int offset) {
+void daxpy(const unsigned int n, const double scaler, double *dx, double *dy, const unsigned int offset) {
   if ((n <= 0) || (scaler == 0)) { return; }
 
 #if PAR_DAXPY
@@ -142,53 +142,74 @@ void daxpy(int n, const double scaler, double *dx, double *dy, int offset) {
 #endif
     }
 #elif SIMD_DAXPY
-register const double     alpha = scaler;
-register double           x0, x1, x2, x3, y0, y1, y2, y3;
-const double              * StX;
+//register double           x0, x1, x2, x3, y0, y1, y2, y3;
+
 register int              i =0;
-int                       nu;
-const int                 inc2 = 2 * offset,
+const int                 
+inc2 = 2 * offset,
 inc3 = 3 * offset,
 inc4 = 4 * offset;
 
-  if ((nu = (n >> 2) << 2) != 0)
+  if (((n >> 2) << 2) != 0)
   {
-    StX = dx + nu * offset;
-
-    long n1 = n & -4;
-
+    const long n1 = (n & -4) - inc4;
+    
     while (i < n1)
     {
-
+      /*
       x0 = (*dx); y0 = (*dy);     
       x1 = dx[offset]; y1 = dy[offset];
       x2 = dx[inc2]; y2 = dy[inc2]; 
       x3 = dx[inc3]; y3 = dy[inc3];
+      */
 
+      //simd multiply
+
+      __m128d dd = _mm_set1_pd(scaler);
+      __m128d x0x1 = _mm_set_pd((*dx), dx[offset]);
+      __m128d x2x3 = _mm_set_pd(dx[inc2], dx[inc3]);
+      __m128d y0y1 = _mm_set_pd((*dy), dy[offset]);
+      __m128d y2y3 = _mm_set_pd(dy[inc2], dy[inc3]);
+
+      x0x1 = _mm_mul_pd(x0x1, dd);
+      x2x3 = _mm_mul_pd(x2x3, dd);
+      y0y1 = _mm_add_pd(y0y1, x0x1);
+      y2y3 = _mm_add_pd(y2y3, x2x3);
+
+      *dy = _mm_cvtsd_f64(y0y1);
+      dy[offset] = _mm_cvtsd_f64(_mm_unpackhi_pd(y0y1, y0y1));
+      dy[inc2] = _mm_cvtsd_f64(y2y3);
+      dy[inc3] = _mm_cvtsd_f64(_mm_unpackhi_pd(y2y3, y2y3));
+
+      //v.m2 = _mm_mul_pd(v.m2, dd);
+/*
+      
       *dy = y0 + alpha * x0; 
       dy[offset] = y1 + alpha * x1;
       dy[inc2] = y2 + alpha * x2; 
       dy[inc3] = y3 + alpha * x3;
-
+      */
       dx += inc4;
       dy += inc4;
       i += inc4;
-    } 
+    }
   }
 
   while (i < n)
   {
-    x0 = (*dx);
-    y0 = (*dy);
+    register double x0 = (*dx);
+    register double y0 = (*dy);
 
-    *dy = y0 + alpha * x0;
+    *dy = y0 + scaler * x0;
 
     dx += offset;
     dy += offset;
-    i++;
+    i+= offset;
+   
   }
+
 #else
-    for (int i = 0; i < n; ++i) {
+    for (size_t i = 0; i < n; ++i) {
       dy[i + offset] += scaler * dx[i + offset];
     }
 #endif
