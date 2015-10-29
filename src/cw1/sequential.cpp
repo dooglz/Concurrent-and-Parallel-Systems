@@ -1,5 +1,6 @@
 #include <iostream>
 #include <assert.h>
+#include <string>
 #include "sequential.h"
 #include "Timer.h"
 

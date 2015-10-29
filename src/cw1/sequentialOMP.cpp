@@ -1,18 +1,21 @@
 #include <iostream>
+#include <string>
 #include <assert.h>
 #include <omp.h>
-#include "sequential.h"
+#include "sequentialOMP.h"
 #include "Timer.h"
 #include <algorithm>
 
 #define MAX_THREADS 8
 #define PAR_DAXPY 0
+#define SIMD_DAXPY 0
+#define SIMD_L_Loop 1
 #define PAR_DAXPY_CACHE 1
 #define cache_line_size 8
 
 using namespace std;
 
-namespace par {
+namespace seqOMP {
 
 // Fills A with random doubles, ppopulates b with row sums, returns largest val
 double fillArray(double **a, int n, double *b) {
@@ -93,12 +96,12 @@ dy      : double vector with n+1 element
 dy = da * dx + dy, unchanged if n <= 0
 */
 
-void daxpy(int n, double scaler, double *dx, double *dy, int offset) {
-  if ((n > 0) && (scaler != 0)) {
-
+void daxpy(int n, const double scaler, double *dx, double *dy, int offset) {
+  if ((n <= 0) || (scaler == 0)) { return; }
 
 #if PAR_DAXPY
-    omp_set_num_threads(min(n, MAX_THREADS));
+
+// omp_set_num_threads(min(n, MAX_THREADS));
 #if PAR_DAXPY_CACHE
     if (offset % cache_line_size != 0) {
       // if we start looping through this, we won't be on the cache boundaries!
@@ -123,7 +126,7 @@ void daxpy(int n, double scaler, double *dx, double *dy, int offset) {
       const int thread_id = omp_get_thread_num();
       const int thread_count = omp_get_num_threads();
       const int stride = thread_count * cache_line_size;
-      // id(thread_id == 0) {cout << " n: " << }
+// id(thread_id == 0) {cout << " n: " << }
 
 #if PAR_DAXPY_CACHE
 
@@ -138,17 +141,62 @@ void daxpy(int n, double scaler, double *dx, double *dy, int offset) {
       }
 #endif
     }
+#elif SIMD_DAXPY
+register const double     alpha = scaler;
+register double           x0, x1, x2, x3, y0, y1, y2, y3;
+const double              * StX;
+register int              i =0;
+int                       nu;
+const int                 inc2 = 2 * offset,
+inc3 = 3 * offset,
+inc4 = 4 * offset;
+
+  if ((nu = (n >> 2) << 2) != 0)
+  {
+    StX = dx + nu * offset;
+
+    long n1 = n & -4;
+
+    while (i < n1)
+    {
+
+      x0 = (*dx); y0 = (*dy);     
+      x1 = dx[offset]; y1 = dy[offset];
+      x2 = dx[inc2]; y2 = dy[inc2]; 
+      x3 = dx[inc3]; y3 = dy[inc3];
+
+      *dy = y0 + alpha * x0; 
+      dy[offset] = y1 + alpha * x1;
+      dy[inc2] = y2 + alpha * x2; 
+      dy[inc3] = y3 + alpha * x3;
+
+      dx += inc4;
+      dy += inc4;
+      i += inc4;
+    } 
+  }
+
+  while (i < n)
+  {
+    x0 = (*dx);
+    y0 = (*dy);
+
+    *dy = y0 + alpha * x0;
+
+    dx += offset;
+    dy += offset;
+    i++;
+  }
 #else
     for (int i = 0; i < n; ++i) {
       dy[i + offset] += scaler * dx[i + offset];
     }
 #endif
-  }
 }
 // Performs Gaussian elimination with partial pivoting
 int gaussian_eliminate(double **a, int n, int *ipivot) {
   // Pointers to columns being worked on
-  double *col_k, *col_j;
+  double *col_k;
   int nm1 = n - 1;
   int info = 0;
 
@@ -177,19 +225,22 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
         t = -1.0 / col_k[k];
         scaleVecByConstant(n - kp1, t, col_k, kp1, 1);
 
-        // Row elimination with column indexing
-        //This need to be done in order, can't be split in parallel
+// Row elimination with column indexing
+#if SIMD_L_Loop
+#pragma omp parallel for
+#endif
         for (int j = kp1; j < n; ++j) {
           // Set pointer for col_j to relevant column in a
-          col_j = &a[j][0];
+          double *col_j = &a[j][0];
 
-          t = col_j[l];
+          double t = col_j[l];
           if (l != k) {
             col_j[l] = col_j[k];
             col_j[k] = t;
           }
           daxpy(n - kp1, t, col_k, col_j, kp1);
         }
+
       } else
         info = k;
     }
@@ -202,7 +253,7 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
 
   return info;
 }
-
+/*
 // Performs a dot product calculation of two vectors
 double ddot(int n, double *dx, int dx_off, double *dy, int dy_off) {
   double temp = 0.0;
@@ -213,26 +264,27 @@ double ddot(int n, double *dx, int dx_off, double *dy, int dy_off) {
   }
   return temp;
 }
-
+*/
 // Solves the system a * x = b using the factors computed in dgeco or
 // gaussian_eliminate
 void dgesl(double **a, int n, int *ipivot, double *b) {
-  double t;
-  int k, l, nm1, kp1;
-
+  int k, nm1;
   nm1 = n - 1;
 
   // Solve a * x = b.  First solve l * y = b
   if (nm1 >= 1) {
     for (k = 0; k < nm1; ++k) {
-      l = ipivot[k];
-      t = b[l];
+
+      int l = ipivot[k];
+      double t = b[l];
+
       if (l != k) {
+
         b[l] = b[k];
         b[k] = t;
       }
-      kp1 = k + 1;
-      daxpy(n - kp1, t, &a[k][0], b, kp1);
+
+      daxpy(n - (k + 1), t, &a[k][0], b, (k + 1));
     }
   }
 
@@ -240,7 +292,7 @@ void dgesl(double **a, int n, int *ipivot, double *b) {
   for (int kb = 0; kb < n; ++kb) {
     k = n - (kb + 1);
     b[k] /= a[k][k];
-    t = -b[k];
+    double t = -b[k];
     daxpy(k, t, &a[k][0], b, 0);
   }
 }
@@ -299,8 +351,9 @@ void validate(double **a, double *b, double *x, int n) {
 }
 
 int start(const unsigned int runs) {
+  omp_set_num_threads(MAX_THREADS);
   ResultFile r;
-  r.name = "Sequential LinPack" + to_string(runs);
+  r.name = "Sequential LinPack OMP" + to_string(runs);
   r.headdings = {"Allocate Memory", "Create Input Numbers",
                  " gaussian_eliminate", "Solve", "Validate"};
   Timer time_total;
@@ -310,16 +363,18 @@ int start(const unsigned int runs) {
     Timer time_allocate;
     double **a = new double *[SIZE];
     for (size_t i = 0; i < SIZE; ++i) {
-      //a[i] = new double[SIZE];
-      a[i] = (double*)_aligned_malloc(SIZE*sizeof(double), sizeof(double));
+      // a[i] = new double[SIZE];
+      a[i] = (double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
     }
 
-    double *b = (double*)_aligned_malloc(SIZE*sizeof(double), sizeof(double));
-    double *x = (double*)_aligned_malloc(SIZE*sizeof(double), sizeof(double));
-    int *ipivot = (int*)_aligned_malloc(SIZE*sizeof(int), sizeof(int));
-    //double *b = new double[SIZE];
-   // double *x = new double[SIZE];
-    //int *ipivot = new int[SIZE];
+    double *b =
+        (double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
+    double *x =
+        (double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
+    int *ipivot = (int *)_aligned_malloc(SIZE * sizeof(int), sizeof(int));
+    // double *b = new double[SIZE];
+    // double *x = new double[SIZE];
+    // int *ipivot = new int[SIZE];
     time_allocate.Stop();
 
     // Main application
@@ -348,9 +403,9 @@ int start(const unsigned int runs) {
     _aligned_free(b);
     _aligned_free(x);
     _aligned_free(ipivot);
-    //delete[] b;
-    //delete[] x;
-    //delete[] ipivot;
+    // delete[] b;
+    // delete[] x;
+    // delete[] ipivot;
   }
   // r.CalcAvg();
   // r.PrintToCSV(r.name);
