@@ -206,6 +206,7 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
 
         // Compute multipliers
         t = -1.0 / col_k[k];
+        //Multiply collum by t
         scaleVecByConstant(n - kp1, t, col_k, kp1, 1);
 
         // Row elimination with column indexing
