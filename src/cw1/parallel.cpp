@@ -477,33 +477,33 @@ namespace par {
         a[i] = new double[SIZE];
       }
       */
-      double *a = new double [SIZE*SIZE];
-      double *b = new double[SIZE];
-      double *x = new double[SIZE];
-      int *ipivot = new int[SIZE];
+	  double *a = new double[NSIZE*NSIZE];
+	  double *b = new double[NSIZE];
+	  double *x = new double[NSIZE];
+	  int *ipivot = new int[NSIZE];
       time_allocate.Stop();
 
       // Main application
       Timer time_genRnd;
-      auto aa = fillArray2(a, SIZE, b);
+	  auto aa = fillArray2(a, NSIZE, b);
       time_genRnd.Stop();
 
       Timer time_gauss;
-      gaussian_eliminate3(a, SIZE, ipivot);
+	  gaussian_eliminate3(a, NSIZE, ipivot);
       time_gauss.Stop();
 
       Timer time_dgesl;
-      sgesl(a, SIZE, ipivot, b);
+	  sgesl(a, NSIZE, ipivot, b);
       time_dgesl.Stop();
 
       Timer time_validate;
-      validate2(a, b, x, SIZE);
+	  validate2(a, b, x, NSIZE);
       time_validate.Stop();
       r.times.push_back({ time_allocate.Duration_NS(), time_genRnd.Duration_NS(),
         time_gauss.Duration_NS(), time_dgesl.Duration_NS(),
         time_validate.Duration_NS() });
       // Free the memory
-      for (size_t i = 0; i < SIZE; ++i) {
+	  for (size_t i = 0; i < NSIZE; ++i) {
       //  delete[] a[i];
       }
       delete[] a;

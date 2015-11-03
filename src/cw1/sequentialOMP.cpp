@@ -5,6 +5,7 @@
 #include "sequentialOMP.h"
 #include "Timer.h"
 #include <algorithm>
+#include <cvmarkersobj.h>
 
 #define MAX_THREADS 2
 #define PAR_DAXPY 0
@@ -12,6 +13,8 @@
 #define SIMD_DAXPY128 0
 #define SIMD_L_Loop 1
 using namespace std;
+using namespace Concurrency::diagnostic;
+
 namespace seqOMP {
 
 void (*cdaxpy)(unsigned int, const double, double *, double *, unsigned int);
@@ -415,50 +418,77 @@ int start(const unsigned int runs, const unsigned int threadCount,
   cout << r.name<< endl;
  r.headdings = {"Allocate Memory", "Create Input Numbers",
                    " gaussian_eliminate", "Solve", "Validate"};
+
+ marker_series series;
+ //span *flagSpan = new span(series, 1, _T("flag span"));
+ //series.write_flag(_T("Here is the flag."));
+ //delete flagSpan;
+
   Timer time_total;
   for (size_t i = 0; i < runs; i++) {
+	//series.write_flag(0, (to_string(i).c_str()));
+	series.write_flag(_T("Here is the flag."));
+	span *flagSpan = new span(series, 1, _T("time_allocate"));
     cout << i << endl;
     // Allocate data on the heap
     Timer time_allocate;
-    double **a = new double *[SIZE];
-    for (size_t i = 0; i < SIZE; ++i) {
+	double **a = new double *[NSIZE];
+	for (size_t i = 0; i < NSIZE; ++i) {
       // a[i] = new double[SIZE];
-      a[i] = (double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
+		a[i] = (double *)_aligned_malloc(NSIZE * sizeof(double), sizeof(double));
     }
 
     double *b =
-        (double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
+		(double *)_aligned_malloc(NSIZE * sizeof(double), sizeof(double));
 
     double *x =
-        (double *)_aligned_malloc(SIZE * sizeof(double), sizeof(double));
+		(double *)_aligned_malloc(NSIZE * sizeof(double), sizeof(double));
 
-    int *ipivot = (int *)_aligned_malloc(SIZE * sizeof(int), sizeof(int));
+	int *ipivot = (int *)_aligned_malloc(NSIZE * sizeof(int), sizeof(int));
     // double *b = new double[SIZE];
-    // double *x = new double[SIZE];
+    // double *x = new double[SIZE]
+	;
     // int *ipivot = new int[SIZE];
+	delete flagSpan;
     time_allocate.Stop();
 
     // Main application
+	flagSpan = new span(series, 1, _T("time_genRnd"));
     Timer time_genRnd;
-    auto aa = fillArray(a, SIZE, b);
+
+	auto aa = fillArray(a, NSIZE, b);
+
+	delete flagSpan;
     time_genRnd.Stop();
 
+	flagSpan = new span(series, 1, _T("time_gauss"));
     Timer time_gauss;
-	cgaussian(a, SIZE, ipivot);
+
+	cgaussian(a, NSIZE, ipivot);
+
+	delete flagSpan;
     time_gauss.Stop();
 
+	flagSpan = new span(series, 1, _T("solve"));
     Timer time_dgesl;
-    dgesl(a, SIZE, ipivot, b);
+
+	dgesl(a, NSIZE, ipivot, b);
+
+	delete flagSpan;
     time_dgesl.Stop();
 
+	flagSpan = new span(series, 1, _T("time_validate"));
     Timer time_validate;
-    validate(a, b, x, SIZE);
+	validate(a, b, x, NSIZE);
+
+	delete flagSpan;
     time_validate.Stop();
+
     r.times.push_back({time_allocate.Duration_NS(), time_genRnd.Duration_NS(),
                        time_gauss.Duration_NS(), time_dgesl.Duration_NS(),
                        time_validate.Duration_NS()});
     // Free the memory
-    for (size_t i = 0; i < SIZE; ++i) {
+	for (size_t i = 0; i < NSIZE; ++i) {
       _aligned_free(a[i]);
     }
     _aligned_free(b);

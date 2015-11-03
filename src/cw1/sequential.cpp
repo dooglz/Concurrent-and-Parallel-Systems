@@ -258,36 +258,36 @@ int start(const unsigned int runs) {
     cout << i << endl;
     // Allocate data on the heap
     Timer time_allocate;
-    double **a = new double *[SIZE];
-    for (size_t i = 0; i < SIZE; ++i) {
-      a[i] = new double[SIZE];
+    double **a = new double *[NSIZE];
+	for (size_t i = 0; i < NSIZE; ++i) {
+      a[i] = new double[NSIZE];
     }
-    double *b = new double[SIZE];
-    double *x = new double[SIZE];
-    int *ipivot = new int[SIZE];
+    double *b = new double[NSIZE];
+    double *x = new double[NSIZE];
+    int *ipivot = new int[NSIZE];
     time_allocate.Stop();
 
     // Main application
     Timer time_genRnd;
-    auto aa = fillArray(a, SIZE, b);
+    auto aa = fillArray(a, NSIZE, b);
     time_genRnd.Stop();
 
     Timer time_gauss;
-    gaussian_eliminate(a, SIZE, ipivot);
+    gaussian_eliminate(a, NSIZE, ipivot);
     time_gauss.Stop();
 
     Timer time_dgesl;
-    dgesl(a, SIZE, ipivot, b);
+    dgesl(a, NSIZE, ipivot, b);
     time_dgesl.Stop();
 
     Timer time_validate;
-    validate(a, b, x, SIZE);
+    validate(a, b, x, NSIZE);
     time_validate.Stop();
     r.times.push_back({time_allocate.Duration_NS(), time_genRnd.Duration_NS(),
                        time_gauss.Duration_NS(), time_dgesl.Duration_NS(),
                        time_validate.Duration_NS()});
     // Free the memory
-    for (size_t i = 0; i < SIZE; ++i) {
+	for (size_t i = 0; i < NSIZE; ++i) {
       delete[] a[i];
     }
     delete[] a;

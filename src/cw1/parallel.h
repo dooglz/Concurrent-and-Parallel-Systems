@@ -1,5 +1,5 @@
 #pragma once
-extern const unsigned int SIZE;
+extern const unsigned int NSIZE;
 extern const double CHECK_VALUE;
 
 namespace par {
