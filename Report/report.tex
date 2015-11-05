@@ -151,9 +151,8 @@ This was the first part of the code to be examined for possible speed-up, as eac
 Initially Paralleling the loop with OpenMp was attempted, but as the loop will only ever execute a maximum of 1000 times,
  the overhead time of creating and running threads was always greater than the time of running the loop without threads.
 
-
 \begin{lstlisting}[language=C++,caption={daxpy Code},label=daxpyCode]
-void daxpy(int n,double scaler, double *dx, double *dy, int offset) {
+void (int n,double scaler, double *dx, double *dy, int offset) {
 	double *const y = &dy[offset];
 	double *const x = &dx[offset];
 	for (int i = 0; i < n; ++i) {
@@ -162,13 +161,43 @@ void daxpy(int n,double scaler, double *dx, double *dy, int offset) {
 }
 \end{lstlisting}
 
+\begin{lstlisting}[language=C++,caption={Simd daxpy Code},label=SimdDaxpyCode]
+void (int n, double scaler, double *dx, double *dy,int offset) {
+	if ((n <= 0) || (scaler == 0)) {
+		return;
+	}
+	double *const y = &dy[offset];
+	double *const x = &dx[offset];
+	
+	const __m256d scalers = _mm256_set1_pd(scaler);
+	const int remainder = n % 4;
+	const int nm1 = n - 3;
+	
+	for (int i = 0; i < nm1; i += 4) {
+		// load X
+		const __m256d xs = _mm256_loadu_pd(&x[i]);
+		// load y
+		__m256d ys = _mm256_loadu_pd(&y[i]);
+		// mutliply X by scalers, add to Y
+		ys = _mm256_add_pd(ys, _mm256_mul_pd(xs, scalers));
+		// load back into y
+		_mm256_storeu_pd(&y[i], ys);
+	}
+	
+	for (int i = n - remainder; i < n; ++i) {
+		y[i] += scaler * x[i];
+	}
+}
+\end{lstlisting}
+
+
 \paragraph{The Pivot loop}
 
 
 
 \paragraph{The Collumn loop}
 
-\paragraph{Memry alignment}
+\paragraph{Memory alignment}
 
 
 \section{Optimisation Method}
