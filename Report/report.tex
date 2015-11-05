@@ -109,53 +109,80 @@ Another method would be to swap the original Gaussian elimination algorithm for 
 This project aimed to see how much the original Linpack code can be optimised with parallelization, without changing the core logic of the algorithm or data output so these routes for optimisation were ruled out.
 
 \paragraph{OpenMP}
+The technology for processing the application in parallel was chosen to be OpenMp, an API that abstracts the creation of threads from the user and therefore allows for easier development and better cross platform portability, assuming that the chosen platform has a complier that supports OpenMP.
+This was chosen over creating threads manually, mainly for ease of development reasons, but also because even in a situation that OpenMp is slower than Manual threads, there should still be a noticeable performance increase over the baseline results.
 
 \paragraph{SIMD}
+For an extra level of performance, SIMD instructions were used to gain performance in the most frequently executed parts of the program.
 
 \section{Linpack Gaussian elimination}
-The dgefa and dgesl subroutines are then used to find a 1000 element vector, x, such that Ax = b.
-The dgefa subroutine performs LU decomposition by Gaussian elimination with partial pivoting on A. A brief
-dgefa modifies A and returns a vector, ipvt, containing the pivot
-indices. 
-
-The dgesl subroutine then solves the simplified LU version of the original system. 
-The time taken to completethe dgefa and dgesl subroutines is measured.
-The remainder of the algorithmserves to estimate the normalized residual error in the result vector x. 
-
-
-\paragraph{Initial analysis}
-The generated routes were exported as a .csv data file, and a visualisation of the routes were also generated and saved as a .svg vector image format. These images are included in the report and can bee seen in the results section.
 
 \figuremacroW
 {linpackmat}
-{Sequential Algorithm with 50 Customers}
+{Overview of GE progression}
 {}
-{0.75}
+{1.0}
 
+\paragraph{Initial analysis}
+\figuremacroW
+{pie}
+{Total program execution}
+{}
+{0.8}
 
-\paragraph{The Pivot loop}
-A basic solution in which a single truck was allocated to every customer was created, forming the most ineffective solution possible. This was used as the baseline set of data that the Clarke-Wright solutions were compared against. The solution cost and total number of routes for each algorithm were compared to each other and to the baseline numbers.
+The Gaussian elimination(GE) stage, work it's way through the array, starting in the "top left corner".
+It examines the entire first column(C) ("Pivot and scale", figure \ref{linpackmat}) and finds the largest value (T).
+The row that contains the largest value(T) becomes the pivot, it is swapped with the topmost row.
+Then, each column is processed, by multiplying it by 1/T and then adding the value of the C column.
 
-\paragraph{The Collumn loop}
-Test were carried to measure the relative computation time for each algorithm with an increasing set of customers. The tests were carried out fifty times and the results averaged to mitigate external factors.\\
-The program was executed on a linux based server, the Java Virtual machine was allocated an initial memory size of 2GB to avoid heap increase slowdowns and the JVM was also running in server mode. These conditions should result in the best possible testing environment in terms of  repeatable and consistent results.
+Once this is complete, the process restarts but in a subsection of the Matrix A that is one row and column smaller than the previous iteration.
+This continues until the "Bottom right" corner is reached. This process transforms Matrix A into a upper triangular matrix that is in row echelon form.
+
+On analysis of execution of the program , it was clear that the vast majority of the execution time was based in the Gaussian Elimination stage.
+On further examination, the "Daxpy" function, which his called many times during the GE stage takes up nearly 90\% of the total execution time.
+Daxpy is the function that does the scaling and addition of each column, and is called 424166 times during the full execution of the program.
 
 \paragraph{Daxpy}
-A basic solution in which a single truck was allocated to every customer was created, forming the most ineffective solution possible. This was used as the baseline set of data that the Clarke-Wright solutions were compared against. The solution cost and total number of routes for each algorithm were compared to each other and to the baseline numbers.
+While the Daxpy function is called at a high frequency it contains very few lines of code.
+It's function is to compute Y = S * X + Y, X and Y are elements of two arrays, and S is a scaler value.
+In the program, this is used in a loop to process each column in the A array.
+\\
+This was the first part of the code to be examined for possible speed-up, as each iteration of the loop doesn't depend on any other iteration.
+Initially Paralleling the loop with OpenMp was attempted, but as the loop will only ever execute a maximum of 1000 times,
+ the overhead time of creating and running threads was always greater than the time of running the loop without threads.
+
+
+\begin{lstlisting}[language=C++,caption={daxpy Code},label=daxpyCode]
+void daxpy(int n,double scaler, double *dx, double *dy, int offset) {
+	double *const y = &dy[offset];
+	double *const x = &dx[offset];
+	for (int i = 0; i < n; ++i) {
+		y[i] += scaler * x[i];
+	}
+}
+\end{lstlisting}
+
+\paragraph{The Pivot loop}
+
+
+
+\paragraph{The Collumn loop}
+
+\paragraph{Memry alignment}
+
 
 \section{Optimisation Method}
 
 \paragraph{Code Simplification}
-Each solution produced by the algorithms was tested by looping through the routes, checking that each customer was visited and that the correct quantity was delivered. The total quantity of deliveries for each route was also calculated, assuring that no route was over the capacity of the truck.
 
 \paragraph{Parallelised Daxpy}
-Each solution produced by the algorithms was tested by looping through the routes, checking that each customer was visited and that the correct quantity was delivered. The total quantity of deliveries for each route was also calculated, assuring that no route was over the capacity of the truck.
+ no route was over the capacity of the truck.
 
 \paragraph{SIMD Daxpy}
-Each solution produced by the algorithms was tested by looping through the routes, checking that each customer was visited and that the correct quantity was delivered. The total quantity of deliveries for each route was also calculated, assuring that no route was over the capacity of the truck.
+
 
 \paragraph{MDaxpy}
-Each solution produced by the algorithms was tested by looping through the routes, checking that each customer was visited and that the correct quantity was delivered. The total quantity of deliveries for each route was also calculated, assuring that no route was over the capacity of the truck.
+
 
 \afterpage{\clearpage}
 
@@ -289,17 +316,7 @@ Overall this report produced repeatable and meaningful data, and can be seen as 
 \clearpage
 
 \section{Appendix: Code}
-\subsection{ClarkeWright.java}
-%\lstinputlisting[language=Java]{../src/ClarkeWright.java}
-
-\vfill
-
-\subsection{VRSolution.java}
-Lines 20 to 28
-%\lstinputlisting[language=Java, firstline=20, lastline=27]{../src/VRSolution.java}
-
-\subsection{Experiment.java}
-%\lstinputlisting[language=Java]{../src/Experiment.java}
+\lstinputlisting[language=C++]{../src/cw1/sequentialOMP.cpp}
 
 \end{document}
 
