@@ -146,20 +146,29 @@ Daxpy is the function that does the scaling and addition of each column, and is 
 While the Daxpy function is called at a high frequency it contains very few lines of code.
 It's function is to compute Y = S * X + Y, X and Y are elements of two arrays, and S is a scaler value.
 In the program, this is used in a loop to process each column in the A array.
-\\
+
 This was the first part of the code to be examined for possible speed-up, as each iteration of the loop doesn't depend on any other iteration.
 Initially Paralleling the loop with OpenMp was attempted, but as the loop will only ever execute a maximum of 1000 times,
  the overhead time of creating and running threads was always greater than the time of running the loop without threads.
-
-\begin{lstlisting}[language=C++,caption={daxpy Code},label=daxpyCode]
-void (int n,double scaler, double *dx, double *dy, int offset) {
-	double *const y = &dy[offset];
-	double *const x = &dx[offset];
-	for (int i = 0; i < n; ++i) {
-		y[i] += scaler * x[i];
-	}
-}
-\end{lstlisting}
+ 
+ \begin{lstlisting}[language=C++,caption={daxpy Code},label=daxpyCode]
+ void (int n,double scaler, double *dx, double *dy, int offset) {
+	 double *const y = &dy[offset];
+	 double *const x = &dx[offset];
+	 for (int i = 0; i < n; ++i) {
+		 y[i] += scaler * x[i];
+	 }
+ }
+ \end{lstlisting}
+ 
+\paragraph{Simd Daxpy}
+As no increase of performance could be gained by using more threads, Simd instructions were investigated.
+Daxpy process N amount of numbers from the two input arrays, using a loop. 
+The numbers to be processed are sequentially laid out in the input arrays, so the logic to convert the loop from processing one item at a time, to multiple, was a simple task.
+Additional lines of code were unavoidable, e.g if the size of N was not divisible by the amount of items that the loop processes in one pass, then the remainder would have to be processed at the end.
+\\
+Simd instructions requires aligned memory, therefore the numbers form the input arrays had to be loaded into special aligned containers. 
+This could be avoided if the whole program was converted to use aligned data arrays.
 
 \begin{lstlisting}[language=C++,caption={Simd daxpy Code},label=SimdDaxpyCode]
 void (int n, double scaler, double *dx, double *dy,int offset) {
@@ -190,12 +199,29 @@ void (int n, double scaler, double *dx, double *dy,int offset) {
 }
 \end{lstlisting}
 
+\paragraph{Simd Daxpy Results}
+Both 128bit and 256bit (Largest supported by available hardware) Simd versions of Daxpy were implemented and tested.
+The 128bit version provided no performance gains, due to the overhead of converting input data to aligned data.
+256 bit instructions however provided a significant increase in performance, but only when used with an N parameter greater than around 100. As seen in Figure \ref{SimdCompare}.
+
+\figuremacroF
+{SimdCompare}
+{Daxpy Simd Comparisons}
+{Time taken to process 10'000 numbers, 10'000 times Each subsequent call to Daxpy increases the amount of number to calculate at once.}
+{1.0}
+
+\paragraph{The Collumn loop}
+Moving back up the call stack to the code area that calls Daxpy, is the loop within the GE function that loops through each column.
+All this loop does it set-up the array pointers to send to Daxpy, 
+
+\paragraph{MDaxpy and Merging Loops}
+
 
 \paragraph{The Pivot loop}
 
 
 
-\paragraph{The Collumn loop}
+
 
 \paragraph{Memory alignment}
 
