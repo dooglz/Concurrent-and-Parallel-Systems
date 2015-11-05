@@ -83,28 +83,45 @@ Concurrent and Parallel Systems (SET10108)}
 \section{Introduction}
 
 \paragraph{The LINPACK benchmark}
-Finding the optimal route for a delivery truck, delivering items of varying size to customers spread over a large area, is a complex and computationally intensive task.
-The problem is similar to the travelling salesman problem, where the task is to find the shortest route to visit every location within a set only once.\\
-The Delivery truck problem extends this with the additional factors that the delivery trucks have a capacity limit to how much they can carry, and thus how many of the customers can be served by a single truck. 
-
-\paragraph{Algoirthm analysis}
-The capacity limitations means that multiple routes must be generated. If delivery time is a factor, then multiple trucks could be driving simultaneously, conversely a single truck could go round one route, resupply at the depot, then drive around another route. This report is not taking delivery time into into account, only the number of routes, and the combined cost of all the routes. The truck capacity is assumed to be the same for all trucks.
+The Linpack algorithm is a popular benchmark in the high performance computing field as it is uses as a floating point performance measure for ranking supercomputers.
+The Benchmark solves a large system of linear equations using LU decomposition and is typical of many matrix-based scientific computations.
+Linpack started as a Fortran maths processing application, the code for solving linear equations was extracted from the original program and turned into a benchmark.  
+\\
+The Linpack1000 algorithm first generates a random 1000x1000 element matrix, A, and 1000 element vector, b. The elements in A and b are all double precision floating point numbers. 
+Processing then takes place to find the solution, a 1000 element vector, x, such that Ax = b.
+\\
+This report documents the process of analysing a specific sequential Linpack implementation and then converting it to a parallel task.
 
 \paragraph{Related Work}
-Generating the optimal path for multiple routes is no longer a simple optimisation task, multiple approaches can be taken and often the solution chosen is not mathematically perfect, but chosen as a trade-off between efficiency and computation time. Assigning one customer to one route means taking into account the effects this will have for the other routes. A brute force method could be taken to process all the possible route combinations, or a saving algorithm could be used.
+As Linpack is used to benchmark large scale multiprocessor supercomputers, there are many parallel versions available. 
+The main difference between implementations is the Gaussian elimination stage, for which there are many algorithms available, some of which can split the task up into separate easily parallelizable chunks of logic. For the scope of this project, changes to the algorithm were avoided wherever possible to keep a fair comparison to the original sequential code.
 
 \paragraph{High-Performance Linpack}
-The savings algorithm implemented and tested in this report is the Clarke-Wright algorithm, first described in the 1962 paper "Scheduling of vehicles from a central depot to a number of delivery points" \cite{CW}.
-The algorithm finds a solution to the problem in a heuristic manor, so the result will not be the perfect solution, but should be relatively close to perfect with substantially less computation time than a brute force attempt. 
+The most commonly used implantation of Linpack is the HPL implementation, written by the Innovative Computing Laboratory at the University of Tennessee. 
+HPL is an open-source project that aims to provide a toolbox for configuring, optimising, and running the benchmark over a network. 
+It contains many version of the algorithm with plenty of configurable options and for tuning performance to a specific system.
+\\
+The HPL project was used as a rough guide to how the reference algorithm could be modified for this project, however most of the optimisation were beyond the scope of this project.
 
 \paragraph{Project Scope}
-The Algorithm first starts by calculating the "savings" of delivery to a single pair of customers, rather than each customer on two trips. This is done for every combination of customers, resulting in a list or every customer pair and the corresponding savings. This list is sorted by the savings, in descending order.
+A quick optimisation would be to drop the precision of the algorithm from double, to single precision floating point values.
+Another method would be to swap the original Gaussian elimination algorithm for a different mathematical approach that would lend itself to parallel processing better.
+This project aimed to see how much the original Linpack code can be optimised with parallelization, without changing the core logic of the algorithm or data output so these routes for optimisation were ruled out.
 
 \paragraph{OpenMP}
 
 \paragraph{SIMD}
 
 \section{Linpack Gaussian elimination}
+The dgefa and dgesl subroutines are then used to find a 1000 element vector, x, such that Ax = b.
+The dgefa subroutine performs LU decomposition by Gaussian elimination with partial pivoting on A. A brief
+dgefa modifies A and returns a vector, ipvt, containing the pivot
+indices. 
+
+The dgesl subroutine then solves the simplified LU version of the original system. 
+The time taken to completethe dgefa and dgesl subroutines is measured.
+The remainder of the algorithmserves to estimate the normalized residual error in the result vector x. 
+
 
 \paragraph{Initial analysis}
 The generated routes were exported as a .csv data file, and a visualisation of the routes were also generated and saved as a .svg vector image format. These images are included in the report and can bee seen in the results section.
@@ -141,6 +158,62 @@ Each solution produced by the algorithms was tested by looping through the route
 Each solution produced by the algorithms was tested by looping through the routes, checking that each customer was visited and that the correct quantity was delivered. The total quantity of deliveries for each route was also calculated, assuring that no route was over the capacity of the truck.
 
 \afterpage{\clearpage}
+
+
+\clearpage
+\begin{table}[b]
+{
+\resizebox{1.0\textwidth}{!}{
+\begin{minipage}{\textwidth}
+\centering
+    \begin{tabular}{ccccccccc}
+						    &	Allocate&	Create Input &	gaussian&	&	&	Total&	Total &	Speedup\\ 
+		Name				&	Memory (ms)&	Numbers (ms)&	eliminate (ms)&	Solve (ms)&	Validate (ms)&	Time (ms)&	Speedup&	(With Simd)$^{*}$\\ \hline\hline \\
+		Threads: 1 No Simd	&	0.48	&	5.22	&	157.27	&	0.69	&	5.27	&	168.93	&	0\%	&	0\%     \\
+		Threads: 1 Simd128	&	0.45	&	5.00	&	152.68	&	0.67	&	5.06	&	163.85	&	3\%	&	0\%     \\
+		Threads: 1 Simd256	&	0.44	&	5.06	&	142.04	&	0.67	&	5.14	&	153.34	&	9\%	&	0\%     \\
+		Threads: 2 No Simd	&	0.42	&	5.48	&	78.76	&	0.68	&	5.52	&	90.86	&	46\%	&	46\%\\
+		Threads: 2 Simd128	&	0.46	&	5.36	&	85.35	&	0.66	&	5.49	&	97.32	&	42\%	&	41\%\\
+		Threads: 2 Simd256	&	0.45	&	4.82	&	72.86	&	0.63	&	4.83	&	83.59	&	51\%	&	45\%\\
+		Threads: 3 No Simd	&	0.45	&	5.37	&	63.49	&	0.68	&	5.46	&	75.44	&	55\%	&	55\%\\
+		Threads: 3 Simd128	&	0.46	&	5.52	&	60.00	&	0.66	&	5.64	&	72.28	&	57\%	&	56\%\\
+		Threads: 3 Simd256	&	0.46	&	5.74	&	52.51	&	0.58	&	5.85	&	65.14	&	61\%	&	58\%\\
+		Threads: 4 No Simd	&	0.44	&	5.28	&	42.67	&	0.62	&	5.33	&	54.34	&	68\%	&	68\%\\
+		Threads: 4 Simd128	&	0.43	&	5.72	&	41.51	&	0.54	&	5.78	&	53.97	&	68\%	&	67\%\\
+		Threads: 4 Simd256	&	0.48	&	5.80	&	39.61	&	0.55	&	5.91	&	52.36	&	69\%	&	66\%\\
+		Threads: 5 No Simd	&	0.46	&	5.41	&	50.89	&	0.67	&	5.50	&	62.93	&	63\%	&	63\%\\
+		Threads: 5 Simd128	&	0.45	&	5.20	&	49.49	&	0.67	&	5.24	&	61.05	&	64\%	&	63\%\\
+		Threads: 5 Simd256	&	0.46	&	5.11	&	46.46	&	0.60	&	5.24	&	57.86	&	66\%	&	62\%\\
+		Threads: 6 No Simd	&	0.50	&	5.80	&	44.44	&	0.75	&	5.93	&	57.41	&	66\%	&	66\%\\
+		Threads: 6 Simd128	&	0.48	&	5.53	&	43.04	&	0.69	&	5.66	&	55.41	&	67\%	&	66\%\\
+		Threads: 6 Simd256	&	0.49	&	5.55	&	41.63	&	0.65	&	5.72	&	54.04	&	68\%	&	65\%\\
+		Threads: 7 No Simd	&	0.53	&	6.00	&	40.21	&	0.75	&	6.18	&	53.66	&	68\%	&	68\%\\
+		Threads: 7 Simd128	&	0.52	&	5.40	&	40.02	&	0.73	&	5.55	&	52.22	&	69\%	&	68\%\\
+		Threads: 7 Simd256	&	0.55	&	5.58	&	35.69	&	0.68	&	5.77	&	48.28	&	71\%	&	69\%\\
+		Threads: 8 No Simd	&	0.51	&	5.01	&	43.25	&	0.80	&	5.17	&	54.75	&	68\%	&	68\%\\
+		Threads: 8 Simd128	&	0.53	&	5.48	&	43.44	&	0.78	&	5.73	&	55.96	&	67\%	&	66\%\\
+		Threads: 8 Simd256	&	0.51	&	5.47	&	38.64	&	0.71	&	5.72	&	51.05	&	70\%	&	67\%\\
+		\hline
+    \end{tabular}
+   
+    \caption[Table caption text]{Results of all tests\\
+    	*Speed-up with Simd, compares times against the	Simd equivalent 1 Thread run}
+    \label{table:name}
+    \end{minipage} }
+}
+\end{table}
+
+\figuremacroF
+{graph2}
+{Total Speed-up percentage, for each number of threads}
+{}
+{1.0}
+\figuremacroF
+{graph1}
+{Total Speed-up (Relative to baseline Simd) percentage, for each number of threads}
+{}
+{1.0}
+\clearpage
 
 \figuremacroF
 {t1i8simd256conc}
@@ -195,79 +268,6 @@ Each solution produced by the algorithms was tested by looping through the route
 {8 Threads, 6 runs, simd256 Daxpy}
 {Thread Status}
 {1.0}
-
-\clearpage
-
-
-\begin{table}[b]
-{
-\resizebox{1.0\textwidth}{!}{
-\begin{minipage}{\textwidth}
-\centering
-    \begin{tabular}{cccccccc}
-   Number of & Dumb solution & Sequential & Parralel & Sequential & Parralel & Sequential Time & Parralel Time \\
-Customers & cost & Cost & Cost & Routes & Routes & (Seconds) & (Seconds) \\ \hline\hline \\
-    10                   & 3781               & 1955            & 2027          & 2                 & 2               & 0.000909157               & 0.001013164             \\
-    20                   & 7931               & 3749            & 3019          & 7                 & 3               & 0.001404089               & 0.001417152             \\
-    30                   & 10302              & 5576            & 4717          & 11                & 5               & 0.000896818               & 0.000497884             \\
-    40                   & 15775              & 7271            & 4562          & 15                & 5               & 0.000736218               & 0.000602604             \\
-    50                   & 20073              & 9746            & 5753          & 21                & 7               & 0.001405751               & 0.00112024              \\
-    60                   & 23194              & 11918           & 6183          & 27                & 7               & 0.002299655               & 0.001860301             \\
-    70                   & 25925              & 12783           & 7293          & 31                & 8               & 0.003710384               & 0.002752865             \\
-    80                   & 28757              & 14238           & 7813          & 35                & 10              & 0.005782794               & 0.004625466             \\
-    90                   & 34580              & 17543           & 9202          & 41                & 11              & 0.011383535               & 0.008565139             \\
-    100                  & 38704              & 19375           & 9854          & 46                & 13              & 0.012820712               & 0.011544076             \\
-    150                  & 58323              & 29787           & 14632         & 71                & 18              & 0.042564373               & 0.035033029             \\
-    200                  & 76929              & 38920           & 17809         & 96                & 23              & 0.112553256               & 0.087635926             \\
-    250                  & 94218              & 47177           & 19586         & 119               & 28              & 0.236658078               & 0.19809618              \\
-    300                  & 116481             & 58912           & 22549         & 145               & 32              & 0.458011761               & 0.3729932               \\
-    350                  & 132529             & 67566           & 25634         & 171               & 37              & 0.795852936               & 0.655195371             \\
-    400                  & 153609             & 78127           & 31412         & 196               & 46              & 1.242856913               & 1.10756995              \\
-    450                  & 174708             & 88128           & 32206         & 220               & 51              & 1.909523115               & 1.674798974             \\
-    500                  & 188740             & 96343           & 35368         & 246               & 58              & 2.837620963               & 2.831905538             \\
-    550                  & 208973             & 105802          & 37923         & 270               & 63              & 4.026630142               & 4.657466973             \\
-    600                  & 228962             & 116788          & 43113         & 296               & 71              & 5.720755786               & 5.927701178             \\
-    650                  & 246924             & 126412          & 42089         & 322               & 72              & 7.251799771               & 7.534708523             \\
-    700                  & 266675             & 135277          & 44760         & 345               & 79              & 10.09592432               & 10.61137241             \\
-    750                  & 283723             & 143957          & 48740         & 370               & 82              & 12.4131069                & 12.93193556             \\
-    800                  & 311675             & 158686          & 51313         & 396               & 88              & 16.92304974               & 15.81973182             \\
-    850                  & 329742             & 168032          & 55694         & 422               & 97              & 21.56937135               & 18.40950886             \\
-    900                  & 347699             & 177212          & 59699         & 446               & 106             & 25.80634481               & 23.36173086             \\
-    950                  & 361993             & 184769          & 59529         & 472               & 105             & 30.69257549               & 29.51002702             \\
-    1000                 & 390783             & 199258          & 61701         & 497               & 109             & 39.20094816               & 35.98109894             \\\hline
-    \end{tabular}
-   
-    \caption[Table caption text]{Results of all tests carried out on both versions of the Clarke Wright algorithm}
-    \label{table:name}
-    \end{minipage} }
-}
-\end{table}
-
-\clearpage
-
-\figuremacroW
-{t4i8simd256cond}
-{Parallel Algorithm with 20 Customers}
-{}
-{0.76}
-
-\figuremacroW
-{t4i8simd256cond}
-{Sequential Algorithm with 20 Customers}
-{}
-{0.76}
-
-\figuremacroW
-{t4i8simd256cond}
-{Parallel Algorithm with 50 Customers}
-{}
-{0.755}
-
-\figuremacroW
-{t4i8simd256cond}
-{Sequential Algorithm with 50 Customers}
-{}
-{0.75}
 
 
 \section{Conclusions}
