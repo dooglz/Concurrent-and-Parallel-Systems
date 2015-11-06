@@ -83,12 +83,15 @@ Concurrent and Parallel Systems (SET10108)}
 \section{Introduction}
 
 \paragraph{The LINPACK benchmark}
-The Linpack algorithm is a popular benchmark in the high performance computing field as it is uses as a floating point performance measure for ranking supercomputers.
+The Linpack algorithm is a popular benchmark in the high performance computing field as a floating point performance measure for ranking supercomputers.
 The Benchmark solves a large system of linear equations using LU decomposition and is typical of many matrix-based scientific computations.
 Linpack started as a Fortran maths processing application, the code for solving linear equations was extracted from the original program and turned into a benchmark.  
+\cite{Dongarra03thelinpack}
 \\
 The Linpack1000 algorithm first generates a random 1000x1000 element matrix, A, and 1000 element vector, b. The elements in A and b are all double precision floating point numbers. 
 Processing then takes place to find the solution, a 1000 element vector, x, such that Ax = b.
+\\
+The algorithm is split into 4 main tasks: generating the initial problem numbers, Gaussian elimination, Solving, and Validation.
 \\
 This report documents the process of analysing a specific sequential Linpack implementation and then converting it to a parallel task.
 
@@ -116,6 +119,7 @@ This was chosen over creating threads manually, mainly for ease of development r
 For an extra level of performance, SIMD instructions were used to gain performance in the most frequently executed parts of the program.
 
 \section{Linpack Gaussian elimination}
+On analysis of execution of the program , it was clear that the vast majority of the execution time was based in the Gaussian Elimination stage.
 
 \figuremacroW
 {linpackmat}
@@ -130,15 +134,14 @@ For an extra level of performance, SIMD instructions were used to gain performan
 {}
 {0.8}
 
-The Gaussian elimination(GE) stage, work it's way through the array, starting in the "top left corner".
-It examines the entire first column(C) ("Pivot and scale", figure \ref{linpackmat}) and finds the largest value (T).
+The Gaussian elimination(GE) stage, works it's way through the array, starting in the "top left corner".
+It examines the entire first column(C) ("Pivot and scale", figure \ref{fig:linpackmat}) and finds the largest value (T).
 The row that contains the largest value(T) becomes the pivot, it is swapped with the topmost row.
 Then, each column is processed, by multiplying it by 1/T and then adding the value of the C column.
 
 Once this is complete, the process restarts but in a subsection of the Matrix A that is one row and column smaller than the previous iteration.
 This continues until the "Bottom right" corner is reached. This process transforms Matrix A into a upper triangular matrix that is in row echelon form.
 
-On analysis of execution of the program , it was clear that the vast majority of the execution time was based in the Gaussian Elimination stage.
 On further examination, the "Daxpy" function, which his called many times during the GE stage takes up nearly 90\% of the total execution time.
 Daxpy is the function that does the scaling and addition of each column, and is called 424166 times during the full execution of the program.
 
@@ -159,17 +162,8 @@ Initially Paralleling the loop with OpenMp was attempted, but as the loop will o
 		 y[i] += scaler * x[i];
 	 }
  }
- \end{lstlisting}
+\end{lstlisting}
  
-\paragraph{Simd Daxpy}
-As no increase of performance could be gained by using more threads, Simd instructions were investigated.
-Daxpy process N amount of numbers from the two input arrays, using a loop. 
-The numbers to be processed are sequentially laid out in the input arrays, so the logic to convert the loop from processing one item at a time, to multiple, was a simple task.
-Additional lines of code were unavoidable, e.g if the size of N was not divisible by the amount of items that the loop processes in one pass, then the remainder would have to be processed at the end.
-\\
-Simd instructions requires aligned memory, therefore the numbers form the input arrays had to be loaded into special aligned containers. 
-This could be avoided if the whole program was converted to use aligned data arrays.
-
 \begin{lstlisting}[language=C++,caption={Simd daxpy Code},label=SimdDaxpyCode]
 void (int n, double scaler, double *dx, double *dy,int offset) {
 	if ((n <= 0) || (scaler == 0)) {
@@ -199,103 +193,191 @@ void (int n, double scaler, double *dx, double *dy,int offset) {
 }
 \end{lstlisting}
 
+\paragraph{Simd Daxpy}
+As no increase of performance could be gained by using more threads, Simd instructions were investigated.
+Daxpy processes N amount of numbers from the two input arrays, using a loop. 
+The numbers to be processed are sequentially laid out in the input arrays, so the logic to convert the loop from processing one item at a time, to multiple, was a simple task.
+Additional lines of code were unavoidable, e.g if the size of N was not divisible by the amount of items that the loop processes in one pass, then the remainder would have to be processed at the end.
+\\
+Simd instructions require aligned memory, therefore the numbers form the input arrays had to be loaded into special aligned containers. 
+This could be avoided if the whole program was converted to use aligned data arrays.
+
 \paragraph{Simd Daxpy Results}
 Both 128bit and 256bit (Largest supported by available hardware) Simd versions of Daxpy were implemented and tested.
 The 128bit version provided no performance gains, due to the overhead of converting input data to aligned data.
-256 bit instructions however provided a significant increase in performance, but only when used with an N parameter greater than around 100. As seen in Figure \ref{SimdCompare}.
+256 bit instructions however provided a significant increase in performance, but only when used with an N parameter greater than around 100. As seen in Figure \ref{fig:SimdCompare}.
+
+
+\paragraph{The Collumn loop}
+Moving back up the call stack to the code area that calls Daxpy, is the loop within the GE function that loops through each column.
+The function of this loop is to set-up the array pointers to send to Daxpy, and swap the pivot row elements to the top.
+Fortunately iterations of this loop could be run independently as each column relies only on the data within the very first column, which has already been processed.
+
+\paragraph{OpenMp Collumn loop}
+Panellising the Collumn loop with OpenMP provided positive results and a large boost to performance. While running threads witin daxy proved unsecsffuly, running threads at the collumn loop level which would each run their own copy of Daxpy simultaneously, proved highly beneficial to processing time (Figure \ref{fig:graph2}, Figure \ref{fig:graph1}, Table \ref{table:results}) 
+
+\paragraph{MDaxpy and Merging Loops}
+An approach taken by similar implementations of the algorithm, is to merge the Column loop and Daxpy into one function (commonly named "MDaxpy"), by either moving the row swap stage to it's own dedicated loop, or by including it into the logic of Daxpy. Practically, this approach does reduce the total number of instructions executed per loop, while the number of loop iterations stays the same. This approach was investigated, but provided no measurable difference in performance while incurring a cost to code complexity, so this line of code restructuring was discarded.
+
+\paragraph{The Pivot loop}
+
+
+\section{Results}
+Different versions of the algorithm were run using a system containing an Intel i7-4790K cpu at 4GHz. Each configuration was run 1000 times, the time taken for each section of the code was taken for each run and the mean average is shown in the following results.\\
+Looking at Table \ref{table:results} and Figure \ref{fig:graph2}, The highest speed-up achieved was 71\% using 256bit Simd and 7 threads. 
+Looking at the trend in general, speed-up increase rapidly drops off after 4 threads. This could be due to the cpu used in this test only having 4 physical cores, hyperthreaded to 8 logical cores.\\
+As previously mentioned 128bit simd instructions do not contribute to ay significant performance gains, while 256bit Simd keeps a constant lead in speedup. Overall the benefits of Simd were vastly overshadowed by the method of multi-threading the Column loop.
+
+\section{System utilisation}
+Comparison of the cpu utilisation, core allocation and thread status for single threaded, 4 threads and 8 threads are given below. For each of these results, the 256bit Simd versions were used. For clarity, only the first 6 runs are shown for each figure.
+
+\paragraph{Single threaded}
+No anomalies were observed here, the Main Thread stays constantly busy( Figure \ref{fig:t4i8simd256conc}). 
+The main thread is reallocated to different physical cores multiple times during execution, this did not have an impact on processing time.
+
+\paragraph{4 threads}
+A near perfect 50\% utilisation was achieved when using 4 threads, with a consistent processing time for each run. 
+The 4 threads were kept constantly busy, and while the core allocation allocation did change frequently, there was enough spare processing resources available to keep the relocation from effecting performance.
+
+\paragraph{8 threads}
+Using the full 8 threads available on the cpu provided a more interesting set of results. The first run struggled to get above 50\% cpu utilisation, with most threads in a waiting state. Looking at the core allocation for this first run, cores 2, 4, and 6 were running two threads at once. This sub-optimal layout resulted in a longer than usual first run. \\
+Looking at the second run, the core allocation is vastly improved, but not perfect as Core 0 is still running 2 threads while core 7 is idle.
+The third run moves to a perfect allocation almost immediately, which ever subsequent run continues.
+\\
+This could be caused by a number of factors, but the primary cause is most likely the operation system's scheduler and the CPUs internal programming.
+Asking for 100\% usage of all available cores on a system means that there is nothing left over for other applications and background tasks.
+This could also be the reason behind 7 threads being the optimal solution, as it leaves 1 logical core for background tasks.
+
+\section{Conclusions}
+\paragraph{Computation time}
+Both Implementations of the Clarke-Wright algorithms produced expected results, with the parallel version producing larger and fewer routes. As for the time taken to calculate, the performance is roughly equal.
+The discrepancies shown in Figure \ref{fig:chart1} when the amount of customers increases beyond 800 is possibly due to optimisations carried out by the Java virtual machine. The total operations carried out is roughly the same for each algorithm, however the arrays are accessed and modified at different times, this is a possible cause for the difference in processing time.
+
+\bibliographystyle{acmsiggraph}
+\bibliography{report}
+\newpage
+\section{Appendix}
+
+\begin{lstlisting}[language=C++,caption={Gaussian eliminate Code},label=gaussian_eliminateCode]
+int (double **a, int n, int *ipivot) {
+	// Pointers to columns being worked on
+	double *col_k;
+	int nm1 = n - 1;
+	int info = 0;
+	
+	if (nm1 >= 0) {
+		int kp1, l;
+		for (int k = 0; k < nm1; ++k) {
+			// Set pointer for col_k to relevant column in a
+			col_k = &a[k][0];
+			kp1 = k + 1;
+			
+			// Find pivot index
+			l = indexOfLargestElement(n - k, col_k, k) + k;
+			ipivot[k] = l;
+			
+			// Zero pivot means that this column is already triangularized
+			if (col_k[l] != 0) {
+				double t;
+				// Check if we need to interchange
+				if (l != k) {
+					t = col_k[l];
+					col_k[l] = col_k[k];
+					col_k[k] = t;
+				}
+				
+				// Compute multipliers
+				t = -1.0 / col_k[k];
+				scaleVecByConstant(n - kp1, t, col_k, kp1, 1);
+				
+				// Row elimination with column indexing
+				#pragma omp parallel for
+				for (int j = kp1; j < n; ++j) {
+					// Set pointer for col_j to relevant column in a
+					double *col_j = &a[j][0];
+					
+					double t = col_j[l];
+					if (l != k) {
+						col_j[l] = col_j[k];
+						col_j[k] = t;
+					}
+					daxpy(n - kp1, t, col_k, col_j, kp1);
+				}
+			} else{
+				info = k;
+			}
+		}
+		ipivot[n - 1] = n - 1;
+		if (a[n - 1][n - 1] == 0) {
+		info = n - 1;
+	}
+	
+	return info;
+}
+\end{lstlisting}
 
 \figuremacroF
 {SimdCompare}
 {Daxpy Simd Comparisons}
 {Time taken to process 10'000 numbers, 10'000 times Each subsequent call to Daxpy increases the amount of number to calculate at once.}
-{1.0}
-
-\paragraph{The Collumn loop}
-Moving back up the call stack to the code area that calls Daxpy, is the loop within the GE function that loops through each column.
-All this loop does it set-up the array pointers to send to Daxpy, 
-
-\paragraph{MDaxpy and Merging Loops}
-
-
-\paragraph{The Pivot loop}
+{0.83}
 
 
 
-
-
-\paragraph{Memory alignment}
-
-
-\section{Optimisation Method}
-
-\paragraph{Code Simplification}
-
-\paragraph{Parallelised Daxpy}
- no route was over the capacity of the truck.
-
-\paragraph{SIMD Daxpy}
-
-
-\paragraph{MDaxpy}
-
-
-\afterpage{\clearpage}
-
-
-\clearpage
 \begin{table}[b]
-{
-\resizebox{1.0\textwidth}{!}{
-\begin{minipage}{\textwidth}
-\centering
-    \begin{tabular}{ccccccccc}
-						    &	Allocate&	Create Input &	gaussian&	&	&	Total&	Total &	Speedup\\ 
-		Name				&	Memory (ms)&	Numbers (ms)&	eliminate (ms)&	Solve (ms)&	Validate (ms)&	Time (ms)&	Speedup&	(With Simd)$^{*}$\\ \hline\hline \\
-		Threads: 1 No Simd	&	0.48	&	5.22	&	157.27	&	0.69	&	5.27	&	168.93	&	0\%	&	0\%     \\
-		Threads: 1 Simd128	&	0.45	&	5.00	&	152.68	&	0.67	&	5.06	&	163.85	&	3\%	&	0\%     \\
-		Threads: 1 Simd256	&	0.44	&	5.06	&	142.04	&	0.67	&	5.14	&	153.34	&	9\%	&	0\%     \\
-		Threads: 2 No Simd	&	0.42	&	5.48	&	78.76	&	0.68	&	5.52	&	90.86	&	46\%	&	46\%\\
-		Threads: 2 Simd128	&	0.46	&	5.36	&	85.35	&	0.66	&	5.49	&	97.32	&	42\%	&	41\%\\
-		Threads: 2 Simd256	&	0.45	&	4.82	&	72.86	&	0.63	&	4.83	&	83.59	&	51\%	&	45\%\\
-		Threads: 3 No Simd	&	0.45	&	5.37	&	63.49	&	0.68	&	5.46	&	75.44	&	55\%	&	55\%\\
-		Threads: 3 Simd128	&	0.46	&	5.52	&	60.00	&	0.66	&	5.64	&	72.28	&	57\%	&	56\%\\
-		Threads: 3 Simd256	&	0.46	&	5.74	&	52.51	&	0.58	&	5.85	&	65.14	&	61\%	&	58\%\\
-		Threads: 4 No Simd	&	0.44	&	5.28	&	42.67	&	0.62	&	5.33	&	54.34	&	68\%	&	68\%\\
-		Threads: 4 Simd128	&	0.43	&	5.72	&	41.51	&	0.54	&	5.78	&	53.97	&	68\%	&	67\%\\
-		Threads: 4 Simd256	&	0.48	&	5.80	&	39.61	&	0.55	&	5.91	&	52.36	&	69\%	&	66\%\\
-		Threads: 5 No Simd	&	0.46	&	5.41	&	50.89	&	0.67	&	5.50	&	62.93	&	63\%	&	63\%\\
-		Threads: 5 Simd128	&	0.45	&	5.20	&	49.49	&	0.67	&	5.24	&	61.05	&	64\%	&	63\%\\
-		Threads: 5 Simd256	&	0.46	&	5.11	&	46.46	&	0.60	&	5.24	&	57.86	&	66\%	&	62\%\\
-		Threads: 6 No Simd	&	0.50	&	5.80	&	44.44	&	0.75	&	5.93	&	57.41	&	66\%	&	66\%\\
-		Threads: 6 Simd128	&	0.48	&	5.53	&	43.04	&	0.69	&	5.66	&	55.41	&	67\%	&	66\%\\
-		Threads: 6 Simd256	&	0.49	&	5.55	&	41.63	&	0.65	&	5.72	&	54.04	&	68\%	&	65\%\\
-		Threads: 7 No Simd	&	0.53	&	6.00	&	40.21	&	0.75	&	6.18	&	53.66	&	68\%	&	68\%\\
-		Threads: 7 Simd128	&	0.52	&	5.40	&	40.02	&	0.73	&	5.55	&	52.22	&	69\%	&	68\%\\
-		Threads: 7 Simd256	&	0.55	&	5.58	&	35.69	&	0.68	&	5.77	&	48.28	&	71\%	&	69\%\\
-		Threads: 8 No Simd	&	0.51	&	5.01	&	43.25	&	0.80	&	5.17	&	54.75	&	68\%	&	68\%\\
-		Threads: 8 Simd128	&	0.53	&	5.48	&	43.44	&	0.78	&	5.73	&	55.96	&	67\%	&	66\%\\
-		Threads: 8 Simd256	&	0.51	&	5.47	&	38.64	&	0.71	&	5.72	&	51.05	&	70\%	&	67\%\\
-		\hline
-    \end{tabular}
-   
-    \caption[Table caption text]{Results of all tests\\
-    	*Speed-up with Simd, compares times against the	Simd equivalent 1 Thread run}
-    \label{table:name}
-    \end{minipage} }
-}
-\end{table}
-
-\figuremacroF
-{graph2}
-{Total Speed-up percentage, for each number of threads}
-{}
-{1.0}
-\figuremacroF
-{graph1}
-{Total Speed-up (Relative to baseline Simd) percentage, for each number of threads}
-{}
-{1.0}
-\clearpage
+	{
+		\centering
+		\resizebox{1.0\textwidth}{!}{
+			\begin{minipage}{\textwidth}
+				\centering
+				\begin{tabular}{ccccccccc}
+					&	Allocate&	Create Input &	gaussian&	&	&	Total&	Total &	Speedup\\ 
+					Name				&	Memory (ms)&	Numbers (ms)&	eliminate (ms)&	Solve (ms)&	Validate (ms)&	Time (ms)&	Speedup&	(With Simd)$^{*}$\\ \hline \\
+					Threads: 1 No Simd	&	0.48	&	5.22	&	157.27	&	0.69	&	5.27	&	168.93	&	0\%	&	0\%     \\
+					Threads: 1 Simd128	&	0.45	&	5.00	&	152.68	&	0.67	&	5.06	&	163.85	&	3\%	&	0\%     \\
+					Threads: 1 Simd256	&	0.44	&	5.06	&	142.04	&	0.67	&	5.14	&	153.34	&	9\%	&	0\%     \\
+					Threads: 2 No Simd	&	0.42	&	5.48	&	78.76	&	0.68	&	5.52	&	90.86	&	46\%	&	46\%\\
+					Threads: 2 Simd128	&	0.46	&	5.36	&	85.35	&	0.66	&	5.49	&	97.32	&	42\%	&	41\%\\
+					Threads: 2 Simd256	&	0.45	&	4.82	&	72.86	&	0.63	&	4.83	&	83.59	&	51\%	&	45\%\\
+					Threads: 3 No Simd	&	0.45	&	5.37	&	63.49	&	0.68	&	5.46	&	75.44	&	55\%	&	55\%\\
+					Threads: 3 Simd128	&	0.46	&	5.52	&	60.00	&	0.66	&	5.64	&	72.28	&	57\%	&	56\%\\
+					Threads: 3 Simd256	&	0.46	&	5.74	&	52.51	&	0.58	&	5.85	&	65.14	&	61\%	&	58\%\\
+					Threads: 4 No Simd	&	0.44	&	5.28	&	42.67	&	0.62	&	5.33	&	54.34	&	68\%	&	68\%\\
+					Threads: 4 Simd128	&	0.43	&	5.72	&	41.51	&	0.54	&	5.78	&	53.97	&	68\%	&	67\%\\
+					Threads: 4 Simd256	&	0.48	&	5.80	&	39.61	&	0.55	&	5.91	&	52.36	&	69\%	&	66\%\\
+					Threads: 5 No Simd	&	0.46	&	5.41	&	50.89	&	0.67	&	5.50	&	62.93	&	63\%	&	63\%\\
+					Threads: 5 Simd128	&	0.45	&	5.20	&	49.49	&	0.67	&	5.24	&	61.05	&	64\%	&	63\%\\
+					Threads: 5 Simd256	&	0.46	&	5.11	&	46.46	&	0.60	&	5.24	&	57.86	&	66\%	&	62\%\\
+					Threads: 6 No Simd	&	0.50	&	5.80	&	44.44	&	0.75	&	5.93	&	57.41	&	66\%	&	66\%\\
+					Threads: 6 Simd128	&	0.48	&	5.53	&	43.04	&	0.69	&	5.66	&	55.41	&	67\%	&	66\%\\
+					Threads: 6 Simd256	&	0.49	&	5.55	&	41.63	&	0.65	&	5.72	&	54.04	&	68\%	&	65\%\\
+					Threads: 7 No Simd	&	0.53	&	6.00	&	40.21	&	0.75	&	6.18	&	53.66	&	68\%	&	68\%\\
+					Threads: 7 Simd128	&	0.52	&	5.40	&	40.02	&	0.73	&	5.55	&	52.22	&	69\%	&	68\%\\
+					Threads: 7 Simd256	&	0.55	&	5.58	&	35.69	&	0.68	&	5.77	&	48.28	&	71\%	&	69\%\\
+					Threads: 8 No Simd	&	0.51	&	5.01	&	43.25	&	0.80	&	5.17	&	54.75	&	68\%	&	68\%\\
+					Threads: 8 Simd128	&	0.53	&	5.48	&	43.44	&	0.78	&	5.73	&	55.96	&	67\%	&	66\%\\
+					Threads: 8 Simd256	&	0.51	&	5.47	&	38.64	&	0.71	&	5.72	&	51.05	&	70\%	&	67\%\\
+					\hline
+				\end{tabular}
+				
+				\caption[Table caption text]{Results of all tests\\
+					*Speed-up with Simd, compares times against the	Simd equivalent 1 Thread run}
+				\label{table:results}
+			\end{minipage} }
+		}
+	\end{table}
+	
+	\figuremacroF
+	{graph2}
+	{Total Speed-up percentage, for each number of threads}
+	{}
+	{1.0}
+	
+	\figuremacroF
+	{graph1}
+	{Total Speed-up (Relative to baseline Simd) percentage, for each number of threads}
+	{}
+	{1.0}
 
 \figuremacroF
 {t1i8simd256conc}
@@ -352,26 +434,6 @@ All this loop does it set-up the array pointers to send to Daxpy,
 {1.0}
 
 
-\section{Conclusions}
-\paragraph{Computation time}
-Both Implementations of the Clarke-Wright algorithms produced expected results, with the parallel version producing larger and fewer routes. As for the time taken to calculate, the performance is roughly equal.
-The discrepancies shown in Figure \ref{fig:chart1} when the amount of customers increases beyond 800 is possibly due to optimisations carried out by the Java virtual machine. The total operations carried out is roughly the same for each algorithm, however the arrays are accessed and modified at different times, this is a possible cause for the difference in processing time.
-
-\paragraph{Solution Quality}
-The Parallel solution produced a large saving of up to a 600\% increase against the baseline cost, shown in Figure \ref{fig:chart2}. The Sequential solution produced a constant saving of around 200\%. These results are also shown in Figure \ref{fig:chart3}, showing the number of routes.
-
-\paragraph{Edge Cases}
-It is possible that a customer can be left out of all routes due to capacity constraints; this is checked for at the end of the calculation. If a customer is left over, it is seen if it would be possible to add it to any existing route and then if it would be more efficient than sending out a new truck. This can be seen in Figure \ref{fig:rand00020cwpsn}, the customer in the top left falls in to this edge case category.
-
-\paragraph{Conclusion}
-The implementation written for this report successfully computes optimised and usable data, the processing cost increases in a quadratic relation to the size of data. The specific implementation could be optimised to produce quicker results. One possible optimisation route could be a custom sort method, as profiling reported that 40\% of the processing time is taken by the initial sort of the customer pairs.\\
-Overall this report produced repeatable and meaningful data, and can be seen as a successful investigation into the Clark-Wright Algorithm.
-\bibliographystyle{acmsiggraph}
-\bibliography{report}
-\clearpage
-
-\section{Appendix: Code}
-\lstinputlisting[language=C++]{../src/cw1/sequentialOMP.cpp}
 
 \end{document}
 
