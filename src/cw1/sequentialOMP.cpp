@@ -7,18 +7,14 @@
 #include <algorithm>
 #include <cvmarkersobj.h>
 
-#define MAX_THREADS 2
-#define PAR_DAXPY 0
-#define SIMD_DAXPY256 0
-#define SIMD_DAXPY128 0
-#define SIMD_L_Loop 1
+#define MAX_THREADS 8
 using namespace std;
 using namespace Concurrency::diagnostic;
 
 namespace seqOMP {
 
 void (*cdaxpy)(unsigned int, const double, double *, double *, unsigned int);
-int(*cgaussian)(double **, int, int *);
+int (*cgaussian)(double **, int, int *);
 // Fills A with random doubles, ppopulates b with row sums, returns largest val
 double fillArray(double **a, int n, double *b) {
   double largestValue = 0.0;
@@ -88,15 +84,7 @@ void scaleVecByConstant(int n, double da, double *dx, int dx_off, int incx) {
 }
 
 /* Constant times a vector plus a vector
-Purpose : To compute dy = da * dx + dy
---- Input ---
-n       : number of elements in input vector(s)
-scaler  : double scalar multiplier
-dx      : double vector with n+1 elements
-dy      : double vector with n+1 element
---- Output ---
-dy = da * dx + dy, unchanged if n <= 0
-*/
+Purpose : To compute dy = da * dx + dy*/
 void daxpyS128(unsigned int n, const double scaler, double *dx, double *dy,
                unsigned int offset) {
   if ((n <= 0) || (scaler == 0)) {
@@ -209,7 +197,7 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
 
         // Compute multipliers
         t = -1.0 / col_k[k];
-        //Multiply collum by t
+        // Multiply collum by t
         scaleVecByConstant(n - kp1, t, col_k, kp1, 1);
 
         // Row elimination with column indexing
@@ -222,7 +210,7 @@ int gaussian_eliminate(double **a, int n, int *ipivot) {
             col_j[l] = col_j[k];
             col_j[k] = t;
           }
-		  cdaxpy(n - kp1, t, col_k, col_j, kp1);
+          cdaxpy(n - kp1, t, col_k, col_j, kp1);
         }
 
       } else
@@ -280,7 +268,7 @@ int gaussian_eliminatePAR(double **a, int n, int *ipivot) {
             col_j[l] = col_j[k];
             col_j[k] = t;
           }
-		  cdaxpy(n - kp1, t, col_k, col_j, kp1);
+          cdaxpy(n - kp1, t, col_k, col_j, kp1);
         }
 
       } else
@@ -296,20 +284,7 @@ int gaussian_eliminatePAR(double **a, int n, int *ipivot) {
   return info;
 }
 
-/*
-// Performs a dot product calculation of two vectors
-double ddot(int n, double *dx, int dx_off, double *dy, int dy_off) {
-  double temp = 0.0;
-  if (n > 0) {
-    for (int i = 0; i < n; ++i) {
-      temp += dx[i + dx_off] * dy[i + dy_off];
-    }
-  }
-  return temp;
-}
-*/
-// Solves the system a * x = b using the factors computed in dgeco or
-// gaussian_eliminate
+// Solves the system a * x = b using the factors computed in gaussian_eliminate
 void dgesl(double **a, int n, int *ipivot, double *b) {
   int k, nm1;
   nm1 = n - 1;
@@ -317,7 +292,6 @@ void dgesl(double **a, int n, int *ipivot, double *b) {
   // Solve a * x = b.  First solve l * y = b
   if (nm1 >= 1) {
     for (k = 0; k < nm1; ++k) {
-
       int l = ipivot[k];
       double t = b[l];
 
@@ -327,7 +301,7 @@ void dgesl(double **a, int n, int *ipivot, double *b) {
         b[k] = t;
       }
 
-	  cdaxpy(n - (k + 1), t, &a[k][0], b, (k + 1));
+      cdaxpy(n - (k + 1), t, &a[k][0], b, (k + 1));
     }
   }
 
@@ -336,7 +310,7 @@ void dgesl(double **a, int n, int *ipivot, double *b) {
     k = n - (kb + 1);
     b[k] /= a[k][k];
     double t = -b[k];
-	cdaxpy(k, t, &a[k][0], b, 0);
+    cdaxpy(k, t, &a[k][0], b, 0);
   }
 }
 
@@ -348,9 +322,6 @@ void dmxpy(int n1, double *y, int n2, double *x, double **m) {
     }
   }
 }
-
-// Runs the benchmark
-void run(double **a, double *b, int n, int *ipivot) {}
 
 // Validates the result
 void validate(double **a, double *b, double *x, int n) {
@@ -379,18 +350,6 @@ void validate(double **a, double *b, double *x, int n) {
   double residn =
       biggestB / (n * biggestA * biggestX * (2.2204460492503131e-016));
   assert(residn < CHECK_VALUE);
-  /*
-  if (residn > CHECK_VALUE) {
-  assert(false);
-  cout << "Validation failed!" << endl;
-  cout << "Computed Norm Res = " << residn << endl;
-  cout << "Reference Norm Res = " << CHECK_VALUE << endl;
-  } else {
-  cout << "Calculations are correct!" << endl;
-  cout << "Computed Norm Res = " << residn << endl;
-  cout << "Reference Norm Res = " << CHECK_VALUE << endl;
-  }
-  */
 }
 
 int start(const unsigned int runs, const unsigned int threadCount,
@@ -408,96 +367,85 @@ int start(const unsigned int runs, const unsigned int threadCount,
   } else {
     cdaxpy = &daxpy;
   }
-  if (threadCount > 1){
-	  unsigned int t = min((unsigned int)omp_get_max_threads(), threadCount);
-	  cgaussian = &gaussian_eliminatePAR;
-	  omp_set_num_threads(t);
-	  r.name += "ParLloopT" + to_string(t);
-  }else{
-	  cgaussian = &gaussian_eliminate;
+  if (threadCount > 1) {
+    unsigned int t = min((unsigned int)omp_get_max_threads(), threadCount);
+    cgaussian = &gaussian_eliminatePAR;
+    omp_set_num_threads(t);
+    r.name += "ParLloopT" + to_string(t);
+  } else {
+    cgaussian = &gaussian_eliminate;
   }
-  cout << r.name<< endl;
- r.headdings = {"Allocate Memory", "Create Input Numbers",
-                   " gaussian_eliminate", "Solve", "Validate"};
+  cout << r.name << endl;
+  r.headdings = {"Allocate Memory", "Create Input Numbers",
+                 " gaussian_eliminate", "Solve", "Validate"};
 
- marker_series series;
- //span *flagSpan = new span(series, 1, _T("flag span"));
- //series.write_flag(_T("Here is the flag."));
- //delete flagSpan;
+  marker_series series;
 
   Timer time_total;
   for (size_t i = 0; i < runs; i++) {
-	//series.write_flag(0, (to_string(i).c_str()));
-	series.write_flag(_T("Here is the flag."));
-	span *flagSpan = new span(series, 1, _T("time_allocate"));
+    series.write_flag(_T("New Run"));
+    span *flagSpan = new span(series, 1, _T("time_allocate"));
     cout << i << endl;
     // Allocate data on the heap
     Timer time_allocate;
-	double **a = new double *[NSIZE];
-	for (size_t i = 0; i < NSIZE; ++i) {
+    double **a = new double *[NSIZE];
+    for (size_t i = 0; i < NSIZE; ++i) {
       // a[i] = new double[SIZE];
-		a[i] = (double *)_aligned_malloc(NSIZE * sizeof(double), sizeof(double));
+      a[i] = (double *)_aligned_malloc(NSIZE * sizeof(double), sizeof(double));
     }
 
     double *b =
-		(double *)_aligned_malloc(NSIZE * sizeof(double), sizeof(double));
+        (double *)_aligned_malloc(NSIZE * sizeof(double), sizeof(double));
 
     double *x =
-		(double *)_aligned_malloc(NSIZE * sizeof(double), sizeof(double));
+        (double *)_aligned_malloc(NSIZE * sizeof(double), sizeof(double));
 
-	int *ipivot = (int *)_aligned_malloc(NSIZE * sizeof(int), sizeof(int));
-    // double *b = new double[SIZE];
-    // double *x = new double[SIZE]
-	;
-    // int *ipivot = new int[SIZE];
-	delete flagSpan;
+    int *ipivot = (int *)_aligned_malloc(NSIZE * sizeof(int), sizeof(int));
+    delete flagSpan;
     time_allocate.Stop();
 
     // Main application
-	flagSpan = new span(series, 1, _T("time_genRnd"));
+    flagSpan = new span(series, 1, _T("time_genRnd"));
     Timer time_genRnd;
 
-	auto aa = fillArray(a, NSIZE, b);
+    auto aa = fillArray(a, NSIZE, b);
 
-	delete flagSpan;
+    delete flagSpan;
     time_genRnd.Stop();
 
-	flagSpan = new span(series, 1, _T("time_gauss"));
+    flagSpan = new span(series, 1, _T("time_gauss"));
     Timer time_gauss;
 
-	cgaussian(a, NSIZE, ipivot);
+    cgaussian(a, NSIZE, ipivot);
 
-	delete flagSpan;
+    delete flagSpan;
     time_gauss.Stop();
 
-	flagSpan = new span(series, 1, _T("solve"));
+    flagSpan = new span(series, 1, _T("solve"));
     Timer time_dgesl;
 
-	dgesl(a, NSIZE, ipivot, b);
+    dgesl(a, NSIZE, ipivot, b);
 
-	delete flagSpan;
+    delete flagSpan;
     time_dgesl.Stop();
 
-	flagSpan = new span(series, 1, _T("time_validate"));
+    flagSpan = new span(series, 1, _T("time_validate"));
     Timer time_validate;
-	validate(a, b, x, NSIZE);
+    validate(a, b, x, NSIZE);
 
-	delete flagSpan;
+    delete flagSpan;
     time_validate.Stop();
 
     r.times.push_back({time_allocate.Duration_NS(), time_genRnd.Duration_NS(),
                        time_gauss.Duration_NS(), time_dgesl.Duration_NS(),
                        time_validate.Duration_NS()});
     // Free the memory
-	for (size_t i = 0; i < NSIZE; ++i) {
+    for (size_t i = 0; i < NSIZE; ++i) {
       _aligned_free(a[i]);
     }
     _aligned_free(b);
     _aligned_free(x);
     _aligned_free(ipivot);
-    // delete[] b;
-    // delete[] x;
-    // delete[] ipivot;
   }
   r.CalcAvg();
   r.PrintToCSV(r.name);
