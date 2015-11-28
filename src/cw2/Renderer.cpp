@@ -34,6 +34,12 @@ GLuint CameraUp_worldspace_ID;
 GLuint ViewProjMatrixID;
 GLuint VertexArrayID;
 
+
+RenderParticle* vis::renderBuffer;
+rbState* vis::renderBufferStates;
+std::mutex vis::renderBufferStateLocks;
+
+
 struct Particle {
   glm::vec3 pos, speed;
   unsigned char r, g, b; // Color
@@ -196,7 +202,10 @@ void vis::Init() {
 
   ViewProjectionMatrix = ProjectionMatrix * ViewMatrix;
 
-  return;
+
+
+  renderBuffer = new RenderParticle[RENDERBUFFERSIZE*PARTICLESIZE];
+  renderBufferStates = new rbState[RENDERBUFFERSIZE];
 }
 
 void UpdatePar() {
@@ -270,6 +279,9 @@ void vis::Start() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   UpdatePar();
+
+//aquire lock n data
+
 
   // Simulate all particles
   int ParticlesCount = 0;
@@ -404,6 +416,9 @@ void vis::Shutdown() {
 
   // Close OpenGL window and terminate GLFW
   glfwTerminate();
+
+  delete[] renderBuffer;
+  delete[] renderBufferStates;
 }
 
 bool vis::ShouldQuit() {
