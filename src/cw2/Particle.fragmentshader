@@ -1,0 +1,14 @@
+#version 330 core
+
+// Interpolated values from the vertex shaders
+in vec2 UV;
+in vec3 particlecolor;
+
+// Ouput data
+out vec4 color;
+
+void main() {
+  float intensity = 0.5f - length(vec2(0.5f, 0.5f) - UV);
+  intensity = clamp(intensity, 0.0f, 0.5f) * 2.0f;
+  color = vec4(particlecolor, intensity);
+}

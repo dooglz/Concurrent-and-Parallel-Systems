@@ -1,413 +1,388 @@
-/*This source code copyrighted by Lazy Foo' Productions (2004-2015)
-and may not be redistributed without written permission.*/
+#include <stdio.h>
+#include <stdlib.h>
 
-//Using SDL, SDL OpenGL, GLEW, standard IO, and strings
-#include "stdafx.h"
-#include <sdl/SDL.h>
-#undef main
-#include <gl/glew.h>
-#include <sdl/SDL_opengl.h>
-#include <gl/glu.h>
+#include <vector>
+#include <algorithm>
+#define glfw3dll
+#include <GL/glew.h>
+
+#include <GLFW/glfw3.h>
+GLFWwindow* window;
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/norm.hpp>
+using namespace glm;
 
 
-//Screen dimension constants
-const int SCREEN_WIDTH = 640;
-const int SCREEN_HEIGHT = 480;
+#include "shader.hpp"
 
-//Starts up SDL, creates window, and initializes OpenGL
-bool init();
+// CPU representation of a particle
+struct Particle{
+  glm::vec3 pos, speed;
+  unsigned char r, g, b; // Color
+  float size, angle, weight;
+  float life; // Remaining life of the particle. if <0 : dead and unused.
+  float cameradistance; // *Squared* distance to the camera. if dead : -1.0f
 
-//Initializes rendering program and clear color
-bool initGL();
+  bool operator<(const Particle& that) const {
+    // Sort in reverse order : far particles drawn first.
+    return this->cameradistance > that.cameradistance;
+  }
+};
 
-//Input handler
-void handleKeys(unsigned char key, int x, int y);
+const int MaxParticles = 100000;
+Particle ParticlesContainer[MaxParticles];
+int LastUsedParticle = 0;
 
-//Per frame update
-void update();
+// Finds a Particle in ParticlesContainer which isn't used yet.
+// (i.e. life < 0);
+int FindUnusedParticle(){
 
-//Renders quad to the screen
-void render();
+  for (int i = LastUsedParticle; i<MaxParticles; i++){
+    if (ParticlesContainer[i].life < 0){
+      LastUsedParticle = i;
+      return i;
+    }
+  }
 
-//Frees media and shuts down SDL
-void close();
+  for (int i = 0; i<LastUsedParticle; i++){
+    if (ParticlesContainer[i].life < 0){
+      LastUsedParticle = i;
+      return i;
+    }
+  }
 
-//Shader loading utility programs
-void printProgramLog(GLuint program);
-void printShaderLog(GLuint shader);
-
-//The window we'll be rendering to
-SDL_Window* gWindow = NULL;
-
-//OpenGL context
-SDL_GLContext gContext;
-
-//Render flag
-bool gRenderQuad = true;
-
-//Graphics program
-GLuint gProgramID = 0;
-GLint gVertexPos2DLocation = -1;
-GLuint gVBO = 0;
-GLuint gIBO = 0;
-
-bool init()
-{
-	//Initialization flag
-	bool success = true;
-
-	//Initialize SDL
-	if (SDL_Init(SDL_INIT_VIDEO) < 0)
-	{
-		printf("SDL could not initialize! SDL Error: %s\n", SDL_GetError());
-		success = false;
-	}
-	else
-	{
-		//Use OpenGL 3.1 core
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-
-		//Create window
-		gWindow = SDL_CreateWindow("SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
-		if (gWindow == NULL)
-		{
-			printf("Window could not be created! SDL Error: %s\n", SDL_GetError());
-			success = false;
-		}
-		else
-		{
-			//Create context
-			gContext = SDL_GL_CreateContext(gWindow);
-			if (gContext == NULL)
-			{
-				printf("OpenGL context could not be created! SDL Error: %s\n", SDL_GetError());
-				success = false;
-			}
-			else
-			{
-				//Initialize GLEW
-				glewExperimental = GL_TRUE;
-				GLenum glewError = glewInit();
-				if (glewError != GLEW_OK)
-				{
-					printf("Error initializing GLEW! %s\n", glewGetErrorString(glewError));
-				}
-
-				//Use Vsync
-				if (SDL_GL_SetSwapInterval(1) < 0)
-				{
-					printf("Warning: Unable to set VSync! SDL Error: %s\n", SDL_GetError());
-				}
-
-				//Initialize OpenGL
-				if (!initGL())
-				{
-					printf("Unable to initialize OpenGL!\n");
-					success = false;
-				}
-			}
-		}
-	}
-
-	return success;
+  return 0; // All particles are taken, override the first one
 }
 
-bool initGL()
-{
-	//Success flag
-	bool success = true;
-
-	//Generate program
-	gProgramID = glCreateProgram();
-
-	//Create vertex shader
-	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-
-	//Get vertex source
-	const GLchar* vertexShaderSource[] =
-	{
-		"#version 140\nin vec2 LVertexPos2D; void main() { gl_Position = vec4( LVertexPos2D.x, LVertexPos2D.y, 0, 1 ); }"
-	};
-
-	//Set vertex source
-	glShaderSource(vertexShader, 1, vertexShaderSource, NULL);
-
-	//Compile vertex source
-	glCompileShader(vertexShader);
-
-	//Check vertex shader for errors
-	GLint vShaderCompiled = GL_FALSE;
-	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &vShaderCompiled);
-	if (vShaderCompiled != GL_TRUE)
-	{
-		printf("Unable to compile vertex shader %d!\n", vertexShader);
-		printShaderLog(vertexShader);
-		success = false;
-	}
-	else
-	{
-		//Attach vertex shader to program
-		glAttachShader(gProgramID, vertexShader);
-
-
-		//Create fragment shader
-		GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-
-		//Get fragment source
-		const GLchar* fragmentShaderSource[] =
-		{
-			"#version 140\nout vec4 LFragment; void main() { LFragment = vec4( 1.0, 1.0, 1.0, 1.0 ); }"
-		};
-
-		//Set fragment source
-		glShaderSource(fragmentShader, 1, fragmentShaderSource, NULL);
-
-		//Compile fragment source
-		glCompileShader(fragmentShader);
-
-		//Check fragment shader for errors
-		GLint fShaderCompiled = GL_FALSE;
-		glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &fShaderCompiled);
-		if (fShaderCompiled != GL_TRUE)
-		{
-			printf("Unable to compile fragment shader %d!\n", fragmentShader);
-			printShaderLog(fragmentShader);
-			success = false;
-		}
-		else
-		{
-			//Attach fragment shader to program
-			glAttachShader(gProgramID, fragmentShader);
-
-
-			//Link program
-			glLinkProgram(gProgramID);
-
-			//Check for errors
-			GLint programSuccess = GL_TRUE;
-			glGetProgramiv(gProgramID, GL_LINK_STATUS, &programSuccess);
-			if (programSuccess != GL_TRUE)
-			{
-				printf("Error linking program %d!\n", gProgramID);
-				printProgramLog(gProgramID);
-				success = false;
-			}
-			else
-			{
-				//Get vertex attribute location
-				gVertexPos2DLocation = glGetAttribLocation(gProgramID, "LVertexPos2D");
-				if (gVertexPos2DLocation == -1)
-				{
-					printf("LVertexPos2D is not a valid glsl program variable!\n");
-					success = false;
-				}
-				else
-				{
-					//Initialize clear color
-					glClearColor(0.f, 0.f, 0.f, 1.f);
-
-					//VBO data
-					GLfloat vertexData[] =
-					{
-						-0.5f, -0.5f,
-						0.5f, -0.5f,
-						0.5f, 0.5f,
-						-0.5f, 0.5f
-					};
-
-					//IBO data
-					GLuint indexData[] = { 0, 1, 2, 3 };
-
-					//Create VBO
-					glGenBuffers(1, &gVBO);
-					glBindBuffer(GL_ARRAY_BUFFER, gVBO);
-					glBufferData(GL_ARRAY_BUFFER, 2 * 4 * sizeof(GLfloat), vertexData, GL_STATIC_DRAW);
-
-					//Create IBO
-					glGenBuffers(1, &gIBO);
-					glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIBO);
-					glBufferData(GL_ELEMENT_ARRAY_BUFFER, 4 * sizeof(GLuint), indexData, GL_STATIC_DRAW);
-				}
-			}
-		}
-	}
-
-	return success;
+void SortParticles(){
+  std::sort(&ParticlesContainer[0], &ParticlesContainer[MaxParticles]);
 }
 
-void handleKeys(unsigned char key, int x, int y)
+int main(void)
 {
-	//Toggle quad
-	if (key == 'q')
-	{
-		gRenderQuad = !gRenderQuad;
-	}
-}
+  // Initialise GLFW
+  if (!glfwInit())
+  {
+    fprintf(stderr, "Failed to initialize GLFW\n");
+    getchar();
+    return -1;
+  }
 
-void update()
-{
-	//No per frame update needed
-}
+  glfwWindowHint(GLFW_SAMPLES, 4);
+  glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-void render()
-{
-	//Clear color buffer
-	glClear(GL_COLOR_BUFFER_BIT);
+  // Open a window and create its OpenGL context
+  window = glfwCreateWindow(1024, 768, "Tutorial 18 - Particules", NULL, NULL);
+  if (window == NULL){
+    fprintf(stderr, "Failed to open GLFW window. If you have an Intel GPU, they are not 3.3 compatible. Try the 2.1 version of the tutorials.\n");
+    getchar();
+    glfwTerminate();
+    return -1;
+  }
+  glfwMakeContextCurrent(window);
 
-	//Render quad
-	if (gRenderQuad)
-	{
-		//Bind program
-		glUseProgram(gProgramID);
+  // Initialize GLEW
+  glewExperimental = true; // Needed for core profile
+  if (glewInit() != GLEW_OK) {
+    fprintf(stderr, "Failed to initialize GLEW\n");
+    getchar();
+    glfwTerminate();
+    return -1;
+  }
 
-		//Enable vertex position
-		glEnableVertexAttribArray(gVertexPos2DLocation);
+  // Ensure we can capture the escape key being pressed below
+  glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
+  // Hide the mouse and enable unlimited mouvement
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-		//Set vertex data
-		glBindBuffer(GL_ARRAY_BUFFER, gVBO);
-		glVertexAttribPointer(gVertexPos2DLocation, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), NULL);
+  // Set the mouse at the center of the screen
+  glfwPollEvents();
+  glfwSetCursorPos(window, 1024 / 2, 768 / 2);
 
-		//Set index data and render
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIBO);
-		glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+  // Dark blue background
+  glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
 
-		//Disable vertex position
-		glDisableVertexAttribArray(gVertexPos2DLocation);
+  // Enable depth test
+  glEnable(GL_DEPTH_TEST);
+  // Accept fragment if it closer to the camera than the former one
+  glDepthFunc(GL_LESS);
 
-		//Unbind program
-		glUseProgram(NULL);
-	}
-}
+  GLuint VertexArrayID;
+  glGenVertexArrays(1, &VertexArrayID);
+  glBindVertexArray(VertexArrayID);
 
-void close()
-{
-	//Deallocate program
-	glDeleteProgram(gProgramID);
 
-	//Destroy window	
-	SDL_DestroyWindow(gWindow);
-	gWindow = NULL;
+  // Create and compile our GLSL program from the shaders
+  GLuint programID = LoadShaders("Particle.vertexshader", "Particle.fragmentshader");
 
-	//Quit SDL subsystems
-	SDL_Quit();
-}
+  // Vertex shader
+  GLuint CameraRight_worldspace_ID = glGetUniformLocation(programID, "CameraRight_worldspace");
+  GLuint CameraUp_worldspace_ID = glGetUniformLocation(programID, "CameraUp_worldspace");
+  GLuint ViewProjMatrixID = glGetUniformLocation(programID, "VP");
 
-void printProgramLog(GLuint program)
-{
-	//Make sure name is shader
-	if (glIsProgram(program))
-	{
-		//Program log length
-		int infoLogLength = 0;
-		int maxLength = infoLogLength;
+  // fragment shader
+  GLuint TextureID = glGetUniformLocation(programID, "myTextureSampler");
 
-		//Get info string length
-		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
 
-		//Allocate string
-		char* infoLog = new char[maxLength];
+  static GLfloat* g_particule_position_size_data = new GLfloat[MaxParticles * 4];
+  static GLubyte* g_particule_color_data = new GLubyte[MaxParticles * 4];
 
-		//Get info log
-		glGetProgramInfoLog(program, maxLength, &infoLogLength, infoLog);
-		if (infoLogLength > 0)
-		{
-			//Print Log
-			printf("%s\n", infoLog);
-		}
+  for (int i = 0; i<MaxParticles; i++){
+    ParticlesContainer[i].life = -1.0f;
+    ParticlesContainer[i].cameradistance = -1.0f;
+  }
 
-		//Deallocate string
-		delete[] infoLog;
-	}
-	else
-	{
-		printf("Name %d is not a program\n", program);
-	}
-}
 
-void printShaderLog(GLuint shader)
-{
-	//Make sure name is shader
-	if (glIsShader(shader))
-	{
-		//Shader log length
-		int infoLogLength = 0;
-		int maxLength = infoLogLength;
 
-		//Get info string length
-		glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &maxLength);
+  // The VBO containing the 4 vertices of the particles.
+  // Thanks to instancing, they will be shared by all particles.
+  static const GLfloat g_vertex_buffer_data[] = {
+    -0.5f, -0.5f, 0.0f,
+    0.5f, -0.5f, 0.0f,
+    -0.5f, 0.5f, 0.0f,
+    0.5f, 0.5f, 0.0f,
+  };
+  GLuint billboard_vertex_buffer;
+  glGenBuffers(1, &billboard_vertex_buffer);
+  glBindBuffer(GL_ARRAY_BUFFER, billboard_vertex_buffer);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
 
-		//Allocate string
-		char* infoLog = new char[maxLength];
+  // The VBO containing the positions and sizes of the particles
+  GLuint particles_position_buffer;
+  glGenBuffers(1, &particles_position_buffer);
+  glBindBuffer(GL_ARRAY_BUFFER, particles_position_buffer);
+  // Initialize with empty (NULL) buffer : it will be updated later, each frame.
+  glBufferData(GL_ARRAY_BUFFER, MaxParticles * 4 * sizeof(GLfloat), NULL, GL_STREAM_DRAW);
 
-		//Get info log
-		glGetShaderInfoLog(shader, maxLength, &infoLogLength, infoLog);
-		if (infoLogLength > 0)
-		{
-			//Print Log
-			printf("%s\n", infoLog);
-		}
+  // The VBO containing the colors of the particles
+  GLuint particles_color_buffer;
+  glGenBuffers(1, &particles_color_buffer);
+  glBindBuffer(GL_ARRAY_BUFFER, particles_color_buffer);
+  // Initialize with empty (NULL) buffer : it will be updated later, each frame.
+  glBufferData(GL_ARRAY_BUFFER, MaxParticles * 4 * sizeof(GLubyte), NULL, GL_STREAM_DRAW);
 
-		//Deallocate string
-		delete[] infoLog;
-	}
-	else
-	{
-		printf("Name %d is not a shader\n", shader);
-	}
-}
 
-int main() {
-	//Start up SDL and create window
-	if (!init())
-	{
-		printf("Failed to initialize!\n");
-	}
-	else
-	{
-		//Main loop flag
-		bool quit = false;
 
-		//Event handler
-		SDL_Event e;
+  double lastTime = glfwGetTime();
+  do
+  {
+    // Clear the screen
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		//Enable text input
-		SDL_StartTextInput();
+    double currentTime = glfwGetTime();
+    double delta = currentTime - lastTime;
+    lastTime = currentTime;
 
-		//While application is running
-		while (!quit)
-		{
-			//Handle events on queue
-			while (SDL_PollEvent(&e) != 0)
-			{
-				//User requests quit
-				if (e.type == SDL_QUIT)
-				{
-					quit = true;
-				}
-				//Handle keypress with current mouse position
-				else if (e.type == SDL_TEXTINPUT)
-				{
-					int x = 0, y = 0;
-					SDL_GetMouseState(&x, &y);
-					handleKeys(e.text.text[0], x, y);
-				}
-			}
+    glm::mat4 ProjectionMatrix = glm::perspective(glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
+    glm::mat4 ViewMatrix = glm::lookAt(
+      glm::vec3(0, 0, 5),           // Camera is here
+      glm::vec3(0, 0, -1) , // and looks here : at the same position, plus "direction"
+      glm::vec3(0, 1, 0)                  // Head is up (set to 0,-1,0 to look upside-down)
+      );
 
-			//Render quad
-			render();
+    // We will need the camera's position in order to sort the particles
+    // w.r.t the camera's distance.
+    // There should be a getCameraPosition() function in common/controls.cpp, 
+    // but this works too.
+    glm::vec3 CameraPosition(glm::inverse(ViewMatrix)[3]);
 
-			//Update screen
-			SDL_GL_SwapWindow(gWindow);
-		}
+    glm::mat4 ViewProjectionMatrix = ProjectionMatrix * ViewMatrix;
 
-		//Disable text input
-		SDL_StopTextInput();
-	}
 
-	//Free resources and close SDL
-	close();
+    // Generate 10 new particule each millisecond,
+    // but limit this to 16 ms (60 fps), or if you have 1 long frame (1sec),
+    // newparticles will be huge and the next frame even longer.
+    int newparticles = (int)(delta*10000.0);
+    if (newparticles > (int)(0.016f*10000.0))
+      newparticles = (int)(0.016f*10000.0);
 
-	return 0;
+    for (int i = 0; i<newparticles; i++){
+      int particleIndex = FindUnusedParticle();
+      ParticlesContainer[particleIndex].life = 5.0f; // This particle will live 5 seconds.
+      ParticlesContainer[particleIndex].pos = glm::vec3(0, 0, -20.0f);
+
+      float spread = 1.5f;
+      glm::vec3 maindir = glm::vec3(0.0f, 10.0f, 0.0f);
+      // Very bad way to generate a random direction; 
+      // See for instance http://stackoverflow.com/questions/5408276/python-uniform-spherical-distribution instead,
+      // combined with some user-controlled parameters (main direction, spread, etc)
+      glm::vec3 randomdir = glm::vec3(
+        (rand() % 2000 - 1000.0f) / 1000.0f,
+        (rand() % 2000 - 1000.0f) / 1000.0f,
+        (rand() % 2000 - 1000.0f) / 1000.0f
+        );
+
+      ParticlesContainer[particleIndex].speed = maindir + randomdir*spread;
+
+
+      // Very bad way to generate a random color
+      ParticlesContainer[particleIndex].r = rand() % 256;
+      ParticlesContainer[particleIndex].g = rand() % 256;
+      ParticlesContainer[particleIndex].b = rand() % 256;
+
+      ParticlesContainer[particleIndex].size = (rand() % 1000) / 2000.0f + 0.1f;
+
+    }
+
+
+
+    // Simulate all particles
+    int ParticlesCount = 0;
+    for (int i = 0; i<MaxParticles; i++){
+
+      Particle& p = ParticlesContainer[i]; // shortcut
+
+      if (p.life > 0.0f){
+
+        // Decrease life
+        p.life -= delta;
+        if (p.life > 0.0f){
+
+          // Simulate simple physics : gravity only, no collisions
+          p.speed += glm::vec3(0.0f, -9.81f, 0.0f) * (float)delta * 0.5f;
+          p.pos += p.speed * (float)delta;
+          p.cameradistance = glm::length2(p.pos - CameraPosition);
+          //ParticlesContainer[i].pos += glm::vec3(0.0f,10.0f, 0.0f) * (float)delta;
+
+          // Fill the GPU buffer
+          g_particule_position_size_data[4 * ParticlesCount + 0] = p.pos.x;
+          g_particule_position_size_data[4 * ParticlesCount + 1] = p.pos.y;
+          g_particule_position_size_data[4 * ParticlesCount + 2] = p.pos.z;
+
+          g_particule_position_size_data[4 * ParticlesCount + 3] = p.size;
+
+          g_particule_color_data[3 * ParticlesCount + 0] = p.r;
+          g_particule_color_data[3 * ParticlesCount + 1] = p.g;
+          g_particule_color_data[3 * ParticlesCount + 2] = p.b;
+
+
+        }
+        else{
+          // Particles that just died will be put at the end of the buffer in SortParticles();
+          p.cameradistance = -1.0f;
+        }
+
+        ParticlesCount++;
+
+      }
+    }
+
+    SortParticles();
+
+
+    //printf("%d ",ParticlesCount);
+
+
+    // Update the buffers that OpenGL uses for rendering.
+    // There are much more sophisticated means to stream data from the CPU to the GPU, 
+    // but this is outside the scope of this tutorial.
+    // http://www.opengl.org/wiki/Buffer_Object_Streaming
+
+
+    glBindBuffer(GL_ARRAY_BUFFER, particles_position_buffer);
+    glBufferData(GL_ARRAY_BUFFER, MaxParticles * 4 * sizeof(GLfloat), NULL, GL_STREAM_DRAW); // Buffer orphaning, a common way to improve streaming perf. See above link for details.
+    glBufferSubData(GL_ARRAY_BUFFER, 0, ParticlesCount * sizeof(GLfloat) * 4, g_particule_position_size_data);
+
+    glBindBuffer(GL_ARRAY_BUFFER, particles_color_buffer);
+    glBufferData(GL_ARRAY_BUFFER, MaxParticles * 3 * sizeof(GLubyte), NULL, GL_STREAM_DRAW); // Buffer orphaning, a common way to improve streaming perf. See above link for details.
+    glBufferSubData(GL_ARRAY_BUFFER, 0, ParticlesCount * sizeof(GLubyte) * 3, g_particule_color_data);
+
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Use our shader
+    glUseProgram(programID);
+
+    // Same as the billboards tutorial
+    glUniform3f(CameraRight_worldspace_ID, ViewMatrix[0][0], ViewMatrix[1][0], ViewMatrix[2][0]);
+    glUniform3f(CameraUp_worldspace_ID, ViewMatrix[0][1], ViewMatrix[1][1], ViewMatrix[2][1]);
+
+    glUniformMatrix4fv(ViewProjMatrixID, 1, GL_FALSE, &ViewProjectionMatrix[0][0]);
+
+    // 1rst attribute buffer : vertices
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, billboard_vertex_buffer);
+    glVertexAttribPointer(
+      0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
+      3,                  // size
+      GL_FLOAT,           // type
+      GL_FALSE,           // normalized?
+      0,                  // stride
+      (void*)0            // array buffer offset
+      );
+
+    // 2nd attribute buffer : positions of particles' centers
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, particles_position_buffer);
+    glVertexAttribPointer(
+      1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+      4,                                // size : x + y + z + size => 4
+      GL_FLOAT,                         // type
+      GL_FALSE,                         // normalized?
+      0,                                // stride
+      (void*)0                          // array buffer offset
+      );
+
+    // 3rd attribute buffer : particles' colors
+    glEnableVertexAttribArray(2);
+    glBindBuffer(GL_ARRAY_BUFFER, particles_color_buffer);
+    glVertexAttribPointer(
+      2,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+      3,                                // size : r + g + b => 3
+      GL_UNSIGNED_BYTE,                 // type
+      GL_TRUE,                          // normalized?    *** YES, this means that the unsigned char[4] will be accessible with a vec4 (floats) in the shader ***
+      0,                                // stride
+      (void*)0                          // array buffer offset
+      );
+
+    // These functions are specific to glDrawArrays*Instanced*.
+    // The first parameter is the attribute buffer we're talking about.
+    // The second parameter is the "rate at which generic vertex attributes advance when rendering multiple instances"
+    // http://www.opengl.org/sdk/docs/man/xhtml/glVertexAttribDivisor.xml
+    glVertexAttribDivisor(0, 0); // particles vertices : always reuse the same 4 vertices -> 0
+    glVertexAttribDivisor(1, 1); // positions : one per quad (its center)                 -> 1
+    glVertexAttribDivisor(2, 1); // color : one per quad                                  -> 1
+
+    // Draw the particules !
+    // This draws many times a small triangle_strip (which looks like a quad).
+    // This is equivalent to :
+    // for(i in ParticlesCount) : glDrawArrays(GL_TRIANGLE_STRIP, 0, 4), 
+    // but faster.
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, ParticlesCount);
+
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    glDisableVertexAttribArray(2);
+
+    // Swap buffers
+    glfwSwapBuffers(window);
+    glfwPollEvents();
+
+  } // Check if the ESC key was pressed or the window was closed
+  while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS &&
+  glfwWindowShouldClose(window) == 0);
+
+
+  delete[] g_particule_position_size_data;
+
+  // Cleanup VBO and shader
+  glDeleteBuffers(1, &particles_color_buffer);
+  glDeleteBuffers(1, &particles_position_buffer);
+  glDeleteBuffers(1, &billboard_vertex_buffer);
+  glDeleteProgram(programID);
+  glDeleteTextures(1, &TextureID);
+  glDeleteVertexArrays(1, &VertexArrayID);
+
+
+  // Close OpenGL window and terminate GLFW
+  glfwTerminate();
+
+  return 0;
 }
