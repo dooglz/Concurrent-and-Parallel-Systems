@@ -91,10 +91,12 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Renderer.h" />
     <ClInclude Include="shader.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cw2.cpp" />
+    <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="shader.cpp" />
   </ItemGroup>
   <ItemGroup>

@@ -21,12 +21,18 @@
     <ClInclude Include="shader.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Renderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cw2.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="shader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
