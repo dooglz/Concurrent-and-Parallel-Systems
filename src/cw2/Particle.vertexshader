@@ -18,8 +18,8 @@ uniform mat4 VP; // Model-View-Projection matrix, but without the Model (the
 
 void main() {
   vec3 vertexPosition_worldspace =
-      xyz + CameraRight_worldspace * squareVertices.x * 0.5 +
-      CameraUp_worldspace * squareVertices.y * 0.5;
+      xyz + CameraRight_worldspace * squareVertices.x * 8.0 +
+      CameraUp_worldspace * squareVertices.y * 8.0;
 
   // Output position of the vertex
   gl_Position = VP * vec4(vertexPosition_worldspace, 1.0f);

@@ -3,7 +3,7 @@
 #include <glm/glm.hpp>
 
 #define RENDERBUFFERSIZE 3
-#define PARTICLESIZE 90000
+#define PARTICLESIZE 512
 
 extern size_t simStalls;
 extern size_t visStalls;

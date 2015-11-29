@@ -6,69 +6,55 @@
 #include <thread>
 #include <iostream>
 
-struct Particle {
+using namespace glm;
+#define SOFTENING 1e-9f
+//#define FRICITON 0.999998f
+#define FRICITON 1.0f
+struct Body {
   glm::vec3 pos, speed;
   unsigned char r, g, b; // Color
-  float life; // Remaining life of the particle. if <0 : dead and unused.
-  float cameradistance; // *Squared* distance to the camera. if dead : -1.0f
-
-  bool operator<(const Particle &that) const {
-    // Sort in reverse order : far particles drawn first.
-    return this->cameradistance > that.cameradistance;
-  }
 };
-Particle *ParticlesContainer;
 
-void SortParticles() {
-  std::sort(&ParticlesContainer[0], &ParticlesContainer[PARTICLESIZE]);
-}
+Body *bodies;
 
 void sim::Init() {
-  ParticlesContainer = new Particle[PARTICLESIZE];
+	bodies = new Body[PARTICLESIZE];
   for (int i = 0; i < PARTICLESIZE; i++) {
-    ParticlesContainer[i].life = -1.0f;
-    ParticlesContainer[i].cameradistance = -1.0f;
-    ParticlesContainer[i].r = rand() % 256;
-    ParticlesContainer[i].g = rand() % 256;
-    ParticlesContainer[i].b = rand() % 256;
+	  bodies[i].r = rand() % 256;
+	  bodies[i].g = rand() % 256;
+	  bodies[i].b = rand() % 256;
+	  bodies[i].pos = vec3((rand() % 1000)-500, (rand() % 1000)-500, 0.0f);
   }
 }
 long long sim::Tick() {
-	const auto n = std::chrono::steady_clock::now();
+  const auto n = std::chrono::steady_clock::now();
   const float delta = 0.01;
 
   // Simulate all particles
   for (int i = 0; i < PARTICLESIZE; i++) {
+	  vec3 newVelo(0,0,0);
+	  for (int j = 0; j < PARTICLESIZE; j++) {
+		  vec3 r = bodies[j].pos - bodies[i].pos;
+		  float distSqr = dot(r, r) + SOFTENING;
+		  if (distSqr > 0.1f){
+			  float invDist = 1.0f / sqrtf(distSqr);
+			  float invDist3 = invDist * invDist * invDist;
 
-    Particle &p = ParticlesContainer[i]; // shortcut
+			  newVelo += r * invDist3;
+		  }
+	  }
 
-    if (p.life > 0.0f) {
+	  bodies[i].speed += delta * newVelo * FRICITON;
+	  bodies[i].speed -= 0.000001f * bodies[i].pos;
+	  bodies[i].pos += bodies[i].speed;
 
-      // Decrease life
-      p.life -= delta;
-      if (p.life > 0.0f) {
-        // Simulate simple physics : gravity only, no collisions
-        p.speed += glm::vec3(0.0f, -9.81f, 0.0f) * delta * 0.5f;
-        p.pos += p.speed * delta;
-        // p.cameradistance = glm::length2(p.pos - vis::CameraPosition);
-      } else {
-        p.cameradistance = -1.0f;
-      }
-    } else {
-      // reset
-      p.life = (rand() % 100) * 0.05f;
-      p.pos = glm::vec3(0, 0, -20.0f);
-      glm::vec3 maindir = glm::vec3(0.0f, 10.0f, 0.0f);
-      glm::vec3 randomdir = glm::vec3((rand() % 2000 - 1000.0f) / 1000.0f,
-                                      (rand() % 2000 - 1000.0f) / 1000.0f,
-                                      (rand() % 2000 - 1000.0f) / 1000.0f);
-      p.speed = maindir + randomdir * 1.5f;
-    }
+	  bodies[i].pos.x = clamp(bodies[i].pos.x, -1000.0f, 1000.0f);
+	  bodies[i].pos.y = clamp(bodies[i].pos.y, -1000.0f, 1000.0f);
+	  bodies[i].pos.z = clamp(bodies[i].pos.z, -1000.0f, 1000.0f);
   }
-  const auto n2 = std::chrono::steady_clock::now();
-  // SortParticles();
-  // copy
 
+
+  const auto n2 = std::chrono::steady_clock::now();
   // aquire lock
   int offset = -1;
   while (offset == -1) {
@@ -90,7 +76,7 @@ long long sim::Tick() {
 
   const size_t addrOffset = offset * PARTICLESIZE;
   for (int i = 0; i < PARTICLESIZE; i++) {
-    Particle &p = ParticlesContainer[i];
+	Body &p = bodies[i];
     vis::renderBuffer[addrOffset + i] = {p.pos, p.r, p.g, p.b};
   }
   { // scope for lock
