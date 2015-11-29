@@ -2,8 +2,8 @@
 #include <mutex>
 #include <glm/glm.hpp>
 
-#define RENDERBUFFERSIZE 3
-#define PARTICLESIZE 512
+#define RENDERBUFFERSIZE 2
+#define PARTICLESIZE 4096
 
 extern size_t simStalls;
 extern size_t visStalls;

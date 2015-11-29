@@ -153,10 +153,10 @@ void vis::Init() {
   lastTime = glfwGetTime();
 
   ProjectionMatrix =
-	  // glm::perspective(glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
-	  glm::ortho(-1000.0, 1000.0, -1000.0, 1000.0, 0.1, 1000.0);
-  ViewMatrix = glm::lookAt(
-          glm::vec3(0, 0, 50), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
+      // glm::perspective(glm::radians(95.0f), 1.0f, 0.1f, 1000.0f);
+      glm::ortho(-1000.0, 1000.0, -1000.0, 1000.0, 0.1, 1000.0);
+  ViewMatrix = glm::lookAt(glm::vec3(0, 0, 1000.0), glm::vec3(0, 0, -1),
+                           glm::vec3(0, 1, 0));
 
   CameraPosition = vec3(glm::inverse(ViewMatrix)[3]);
 
