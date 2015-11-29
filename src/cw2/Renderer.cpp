@@ -11,6 +11,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/norm.hpp>
+#include <thread>
+#include <iostream>
 
 #include "shader.hpp"
 #include "Renderer.h"
@@ -34,58 +36,17 @@ GLuint CameraUp_worldspace_ID;
 GLuint ViewProjMatrixID;
 GLuint VertexArrayID;
 
-
-RenderParticle* vis::renderBuffer;
-rbState* vis::renderBufferStates;
+RenderParticle *vis::renderBuffer;
+rbState *vis::renderBufferStates;
 std::mutex vis::renderBufferStateLocks;
 
+const int MaxParticles = PARTICLESIZE;
 
-struct Particle {
-  glm::vec3 pos, speed;
-  unsigned char r, g, b; // Color
-  float size, angle, weight;
-  float life; // Remaining life of the particle. if <0 : dead and unused.
-  float cameradistance; // *Squared* distance to the camera. if dead : -1.0f
-
-  bool operator<(const Particle &that) const {
-    // Sort in reverse order : far particles drawn first.
-    return this->cameradistance > that.cameradistance;
-  }
-};
-
-const int MaxParticles = 100000;
-Particle ParticlesContainer[MaxParticles];
-int LastUsedParticle = 0;
 double lastTime;
 glm::mat4 ViewProjectionMatrix;
-glm::vec3 CameraPosition;
+glm::vec3 vis::CameraPosition;
 glm::mat4 ViewMatrix;
 glm::mat4 ProjectionMatrix;
-
-// Finds a Particle in ParticlesContainer which isn't used yet.
-// (i.e. life < 0);
-int FindUnusedParticle() {
-
-  for (int i = LastUsedParticle; i < MaxParticles; i++) {
-    if (ParticlesContainer[i].life < 0) {
-      LastUsedParticle = i;
-      return i;
-    }
-  }
-
-  for (int i = 0; i < LastUsedParticle; i++) {
-    if (ParticlesContainer[i].life < 0) {
-      LastUsedParticle = i;
-      return i;
-    }
-  }
-
-  return 0; // All particles are taken, override the first one
-}
-
-void SortParticles() {
-  std::sort(&ParticlesContainer[0], &ParticlesContainer[MaxParticles]);
-}
 
 void vis::Init() {
   // Initialise GLFW
@@ -102,6 +63,8 @@ void vis::Init() {
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT,
                  GL_TRUE); // To make MacOS happy; should not be needed
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+  // vsync
 
   // Open a window and create its OpenGL context
   window = glfwCreateWindow(1024, 768, "Tutorial 18 - Particules", NULL, NULL);
@@ -127,12 +90,13 @@ void vis::Init() {
   // Ensure we can capture the escape key being pressed below
   glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
   // Hide the mouse and enable unlimited mouvement
-  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
   // Set the mouse at the center of the screen
   glfwPollEvents();
   glfwSetCursorPos(window, 1024 / 2, 768 / 2);
 
+  glfwSwapInterval(1);
   // Dark blue background
   glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
 
@@ -155,13 +119,8 @@ void vis::Init() {
       glGetUniformLocation(programID, "CameraUp_worldspace");
   ViewProjMatrixID = glGetUniformLocation(programID, "VP");
 
-  g_particule_position_size_data = new GLfloat[MaxParticles * 4];
-  g_particule_color_data = new GLubyte[MaxParticles * 4];
-
-  for (int i = 0; i < MaxParticles; i++) {
-    ParticlesContainer[i].life = -1.0f;
-    ParticlesContainer[i].cameradistance = -1.0f;
-  }
+  g_particule_position_size_data = new GLfloat[MaxParticles * 3];
+  g_particule_color_data = new GLubyte[MaxParticles * 3];
 
   // The VBO containing the 4 vertices of the particles.
   // Thanks to instancing, they will be shared by all particles.
@@ -180,7 +139,7 @@ void vis::Init() {
   glGenBuffers(1, &particles_position_buffer);
   glBindBuffer(GL_ARRAY_BUFFER, particles_position_buffer);
   // Initialize with empty (NULL) buffer : it will be updated later, each frame.
-  glBufferData(GL_ARRAY_BUFFER, MaxParticles * 4 * sizeof(GLfloat), NULL,
+  glBufferData(GL_ARRAY_BUFFER, MaxParticles * 3 * sizeof(GLfloat), NULL,
                GL_STREAM_DRAW);
 
   // The VBO containing the colors of the particles
@@ -188,7 +147,7 @@ void vis::Init() {
   glGenBuffers(1, &particles_color_buffer);
   glBindBuffer(GL_ARRAY_BUFFER, particles_color_buffer);
   // Initialize with empty (NULL) buffer : it will be updated later, each frame.
-  glBufferData(GL_ARRAY_BUFFER, MaxParticles * 4 * sizeof(GLubyte), NULL,
+  glBufferData(GL_ARRAY_BUFFER, MaxParticles * 3 * sizeof(GLubyte), NULL,
                GL_STREAM_DRAW);
 
   lastTime = glfwGetTime();
@@ -202,106 +161,52 @@ void vis::Init() {
 
   ViewProjectionMatrix = ProjectionMatrix * ViewMatrix;
 
-
-
-  renderBuffer = new RenderParticle[RENDERBUFFERSIZE*PARTICLESIZE];
+  renderBuffer = new RenderParticle[RENDERBUFFERSIZE * PARTICLESIZE];
   renderBufferStates = new rbState[RENDERBUFFERSIZE];
-}
-
-void UpdatePar() {
-  double currentTime = glfwGetTime();
-  double delta = currentTime - lastTime;
-  lastTime = currentTime;
-  // Generate 10 new particule each millisecond,
-  // but limit this to 16 ms (60 fps), or if you have 1 long frame (1sec),
-  // newparticles will be huge and the next frame even longer.
-  int newparticles = (int)(delta * 10000.0);
-  if (newparticles > (int)(0.016f * 10000.0))
-    newparticles = (int)(0.016f * 10000.0);
-
-  for (int i = 0; i < newparticles; i++) {
-    int particleIndex = FindUnusedParticle();
-    ParticlesContainer[particleIndex].life =
-        5.0f; // This particle will live 5 seconds.
-    ParticlesContainer[particleIndex].pos = glm::vec3(0, 0, -20.0f);
-
-    float spread = 1.5f;
-    glm::vec3 maindir = glm::vec3(0.0f, 10.0f, 0.0f);
-    // Very bad way to generate a random direction;
-    // See for instance
-    // http://stackoverflow.com/questions/5408276/python-uniform-spherical-distribution
-    // instead,
-    // combined with some user-controlled parameters (main direction, spread,
-    // etc)
-    glm::vec3 randomdir = glm::vec3((rand() % 2000 - 1000.0f) / 1000.0f,
-                                    (rand() % 2000 - 1000.0f) / 1000.0f,
-                                    (rand() % 2000 - 1000.0f) / 1000.0f);
-
-    ParticlesContainer[particleIndex].speed = maindir + randomdir * spread;
-
-    // Very bad way to generate a random color
-    ParticlesContainer[particleIndex].r = rand() % 256;
-    ParticlesContainer[particleIndex].g = rand() % 256;
-    ParticlesContainer[particleIndex].b = rand() % 256;
-
-    ParticlesContainer[particleIndex].size = (rand() % 1000) / 2000.0f + 0.1f;
+  for (size_t i = 0; i < RENDERBUFFERSIZE; i++) {
+    renderBufferStates[i] = READYTOUPDATE;
   }
-
-  // Simulate all particles
-  for (int i = 0; i < MaxParticles; i++) {
-
-    Particle &p = ParticlesContainer[i]; // shortcut
-
-    if (p.life > 0.0f) {
-
-      // Decrease life
-      p.life -= delta;
-      if (p.life > 0.0f) {
-
-        // Simulate simple physics : gravity only, no collisions
-        p.speed += glm::vec3(0.0f, -9.81f, 0.0f) * (float)delta * 0.5f;
-        p.pos += p.speed * (float)delta;
-        p.cameradistance = glm::length2(p.pos - CameraPosition);
-      } else {
-        // Particles that just died will be put at the end of the buffer in
-        // SortParticles();
-        p.cameradistance = -1.0f;
-      }
-    }
-  }
-
-  SortParticles();
 }
 
 void vis::Start() {
 
-  // Clear the screen
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-  UpdatePar();
-
-//aquire lock n data
-
+  int offset = -1;
+  while (offset == -1) {
+    { // scope for lock
+      std::lock_guard<std::mutex> lock(vis::renderBufferStateLocks);
+      for (size_t i = 0; i < RENDERBUFFERSIZE; i++) {
+        if (vis::renderBufferStates[i] == vis::READYTORENDER) {
+          offset = i;
+          vis::renderBufferStates[i] = vis::RENDERING;
+          break;
+        }
+      }
+    }
+    if (offset == -1) {
+      visStalls++;
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+  }
+  const size_t addrOffset = offset * PARTICLESIZE;
 
   // Simulate all particles
   int ParticlesCount = 0;
   for (int i = 0; i < MaxParticles; i++) {
-    Particle &p = ParticlesContainer[i]; // shortcut
-    if (p.life > 0.0f) {
+    RenderParticle &p = renderBuffer[addrOffset + i]; // shortcut
 
-      // Fill the GPU buffer
-      g_particule_position_size_data[4 * ParticlesCount + 0] = p.pos.x;
-      g_particule_position_size_data[4 * ParticlesCount + 1] = p.pos.y;
-      g_particule_position_size_data[4 * ParticlesCount + 2] = p.pos.z;
+    // Fill the GPU buffer
+    g_particule_position_size_data[3 * ParticlesCount + 0] = p.pos.x;
+    g_particule_position_size_data[3 * ParticlesCount + 1] = p.pos.y;
+    g_particule_position_size_data[3 * ParticlesCount + 2] = p.pos.z;
 
-      g_particule_position_size_data[4 * ParticlesCount + 3] = p.size;
-
-      g_particule_color_data[3 * ParticlesCount + 0] = p.r;
-      g_particule_color_data[3 * ParticlesCount + 1] = p.g;
-      g_particule_color_data[3 * ParticlesCount + 2] = p.b;
-      ParticlesCount++;
-    }
+    g_particule_color_data[3 * ParticlesCount + 0] = p.r;
+    g_particule_color_data[3 * ParticlesCount + 1] = p.g;
+    g_particule_color_data[3 * ParticlesCount + 2] = p.b;
+    ParticlesCount++;
   }
+
+  // Clear the screen
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   // printf("%d ",ParticlesCount);
 
@@ -312,10 +217,10 @@ void vis::Start() {
   // http://www.opengl.org/wiki/Buffer_Object_Streaming
 
   glBindBuffer(GL_ARRAY_BUFFER, particles_position_buffer);
-  glBufferData(GL_ARRAY_BUFFER, MaxParticles * 4 * sizeof(GLfloat), NULL,
+  glBufferData(GL_ARRAY_BUFFER, MaxParticles * 3 * sizeof(GLfloat), NULL,
                GL_STREAM_DRAW); // Buffer orphaning, a common way to improve
                                 // streaming perf. See above link for details.
-  glBufferSubData(GL_ARRAY_BUFFER, 0, ParticlesCount * sizeof(GLfloat) * 4,
+  glBufferSubData(GL_ARRAY_BUFFER, 0, ParticlesCount * sizeof(GLfloat) * 3,
                   g_particule_position_size_data);
 
   glBindBuffer(GL_ARRAY_BUFFER, particles_color_buffer);
@@ -357,7 +262,7 @@ void vis::Start() {
   glBindBuffer(GL_ARRAY_BUFFER, particles_position_buffer);
   glVertexAttribPointer(1, // attribute. No particular reason for 1, but must
                            // match the layout in the shader.
-                        4, // size : x + y + z + size => 4
+                        3, // size : x + y + z + size => 4
                         GL_FLOAT, // type
                         GL_FALSE, // normalized?
                         0,        // stride
@@ -402,6 +307,11 @@ void vis::Start() {
   // Swap buffers
   glfwSwapBuffers(window);
   glfwPollEvents();
+
+  { // scope for lock
+    std::lock_guard<std::mutex> lock(vis::renderBufferStateLocks);
+    vis::renderBufferStates[offset] = vis::READYTOUPDATE;
+  }
 }
 void vis::Stop() {}
 void vis::Shutdown() {
