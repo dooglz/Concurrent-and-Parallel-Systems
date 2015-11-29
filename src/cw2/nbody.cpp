@@ -33,7 +33,8 @@ void sim::Init() {
     ParticlesContainer[i].b = rand() % 256;
   }
 }
-void sim::Tick() {
+long long sim::Tick() {
+	const auto n = std::chrono::steady_clock::now();
   const float delta = 0.01;
 
   // Simulate all particles
@@ -64,7 +65,7 @@ void sim::Tick() {
       p.speed = maindir + randomdir * 1.5f;
     }
   }
-
+  const auto n2 = std::chrono::steady_clock::now();
   // SortParticles();
   // copy
 
@@ -96,4 +97,6 @@ void sim::Tick() {
     std::lock_guard<std::mutex> lock(vis::renderBufferStateLocks);
     vis::renderBufferStates[offset] = vis::READYTORENDER;
   }
+
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(n2 - n).count();
 }

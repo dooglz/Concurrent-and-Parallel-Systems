@@ -1,6 +1,6 @@
 #pragma once
 
 namespace sim {
-void Tick();
+long long  Tick();
 void Init();
 }
