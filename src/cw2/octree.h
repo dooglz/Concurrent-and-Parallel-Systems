@@ -3,6 +3,8 @@
 #include <string>
 #include <glm/glm.hpp>
 
+using namespace glm;
+
 // Paul Nettle
 
 // (http://www.flipcode.com/askmid/)
@@ -17,15 +19,48 @@ typedef bool (*callback)(const Octree &o, void *data);
 struct Bounds {
   glm::vec3 center; // Center of a cubic bounding volume
   float radius;     // Radius of a cubic bounding volume
-  Bounds(float x, float y, float z, float r){
-    center = glm::vec3(x, y, z);
+  Bounds(vec3 p, float r){
+    center = p;
     radius = r;
   }
-  Bounds() :Bounds(0.0,0.0,0.0,0.0){
-
-  }
+  Bounds(float x, float y, float z, float r) :Bounds(vec3(x,y,z),r){}
+  Bounds() :Bounds(0.0,0.0,0.0,0.0){}
 };
 
+
+class Octree {
+public:
+  Octree();
+  virtual ~Octree();
+
+  // Accessors
+  Body** Bodys() const { return _Bodys; }
+  const uint32_t BodyCount() const { return _BodyCount; }
+
+  // Implementation
+  const void build(Body **Bodys, const unsigned int count,
+    const unsigned int maximumDepth,
+    const Bounds &bounds,
+    const unsigned int currentDepth = 0);
+
+  const void Add(Body* b);
+
+protected:
+  bool _activeChilderen[8];
+  Octree *_childeren[8];
+  uint32_t _BodyCount;
+  Body **_Bodys;
+  Bounds _bounds;
+};
+
+
+Octree::Octree()
+  : _BodyCount(0), _Bodys(0), _bounds(0.0, 0.0, 0.0, 0.0) {
+  memset(_childeren, 0, sizeof(_childeren));
+}
+
+
+/*
 class Octree {
 public:
   Octree();
@@ -222,3 +257,4 @@ const bool Octree::traverse(callback proc, void *data) const {
 
   return true;
 }
+*/

@@ -36,10 +36,10 @@ void sim::Init() {
     bodiesptrs[i] = &bodies[i];
   }
   omp_set_num_threads(4);
-  Octree* oc = new Octree();
+ // Octree* oc = new Octree();
 
 
-  oc->build(bodiesptrs, PARTICLESIZE, 4096, { 0.0, 0.0, 0.0, 1000.0 }, 0);
+ // oc->build(bodiesptrs, PARTICLESIZE, 4096, { 0.0, 0.0, 0.0, 1000.0 }, 0);
   std::cout << "yolo";
 }
 long long sim::Tick() {
