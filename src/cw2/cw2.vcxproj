@@ -97,6 +97,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="nbody.h" />
+    <ClInclude Include="octree.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="shader.hpp" />
     <ClInclude Include="Timer.h" />

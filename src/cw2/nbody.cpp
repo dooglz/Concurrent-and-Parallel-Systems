@@ -6,20 +6,26 @@
 #include <thread>
 #include <iostream>
 #include <omp.h>
+#include "octree.h"
 
 using namespace glm;
 #define SOFTENING 1e-9f
 //#define FRICITON 0.999998f
 #define FRICITON 1.0f
-struct Body {
-  glm::vec3 pos, speed;
-  unsigned char r, g, b; // Color
-};
 
 Body *bodies;
+Body::Body(glm::vec3 pos){
+  pos = pos;
+  r = rand() % 256;
+  g = rand() % 256;
+  b = rand() % 256;
+}
+Body::Body(float x, float y, float z) : Body(vec3(x, y, z)){}
+Body::Body() : Body(vec3(0)){}
 
 void sim::Init() {
   bodies = new Body[PARTICLESIZE];
+  Body **bodiesptrs = new Body*[PARTICLESIZE];
 #pragma omp parallel for
   for (int i = 0; i < PARTICLESIZE; i++) {
     bodies[i].r = rand() % 256;
@@ -27,8 +33,14 @@ void sim::Init() {
     bodies[i].b = rand() % 256;
     bodies[i].pos = vec3((rand() % 1000) - 500, (rand() % 1000) - 500,
                          (rand() % 1000) - 500);
+    bodiesptrs[i] = &bodies[i];
   }
-  omp_set_num_threads(8);
+  omp_set_num_threads(4);
+  Octree* oc = new Octree();
+
+
+  oc->build(bodiesptrs, PARTICLESIZE, 4096, { 0.0, 0.0, 0.0, 1000.0 }, 0);
+  std::cout << "yolo";
 }
 long long sim::Tick() {
   const auto n = std::chrono::steady_clock::now();

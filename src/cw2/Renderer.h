@@ -3,10 +3,10 @@
 #include <glm/glm.hpp>
 
 #define RENDERBUFFERSIZE 2
-#define PARTICLESIZE 4096
+#define PARTICLESIZE 512
 
-extern size_t simStalls;
-extern size_t visStalls;
+extern uint16_t simStalls;
+extern uint16_t visStalls;
 
 namespace vis {
 
