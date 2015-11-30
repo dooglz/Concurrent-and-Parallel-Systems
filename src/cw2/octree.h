@@ -2,7 +2,7 @@
 #include "nbody.h"
 #include <string>
 #include <glm/glm.hpp>
-
+/*
 using namespace glm;
 
 // Paul Nettle
@@ -59,7 +59,7 @@ Octree::Octree()
   memset(_childeren, 0, sizeof(_childeren));
 }
 
-
+*/
 /*
 class Octree {
 public:

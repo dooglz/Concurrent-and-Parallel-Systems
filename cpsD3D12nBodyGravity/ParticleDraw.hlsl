@@ -117,6 +117,6 @@ void GSParticleDraw(point VSParticleDrawOut input[1], inout TriangleStream<GSPar
 float4 PSParticleDraw(PSParticleDrawIn input) : SV_Target
 {
 	float intensity = 0.5f - length(float2(0.5f, 0.5f) - input.tex);
-	intensity = clamp(intensity, 0.0f, 0.5f) * 2.0f;
+	intensity = clamp(intensity, 0.0f, 0.5f) * 1.5f;
 	return float4(input.color.xyz, intensity);
 }
