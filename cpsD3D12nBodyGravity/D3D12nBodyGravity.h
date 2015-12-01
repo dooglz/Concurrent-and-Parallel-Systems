@@ -15,6 +15,9 @@
 #include "SimpleCamera.h"
 #include "StepTimer.h"
 
+
+extern unsigned int ParticleCount; // The number of particles in the n-body simulation.
+
 using namespace DirectX;
 
 // Note that while ComPtr is used to manage the lifetime of resources on the
@@ -42,8 +45,7 @@ private:
   static const UINT FrameCount = 2;
   static const UINT ThreadCount = 1;
   static const float ParticleSpread;
-  static const UINT ParticleCount =
-      4096; // The number of particles in the n-body simulation.
+
 
   // "Vertex" definition for particles. Triangle vertices are generated
   // by the geometry shader. Color data will be assigned to those
