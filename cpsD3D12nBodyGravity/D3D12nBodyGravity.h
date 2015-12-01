@@ -43,7 +43,7 @@ private:
   static const UINT ThreadCount = 1;
   static const float ParticleSpread;
   static const UINT ParticleCount =
-      40000; // The number of particles in the n-body simulation.
+      4096; // The number of particles in the n-body simulation.
 
   // "Vertex" definition for particles. Triangle vertices are generated
   // by the geometry shader. Color data will be assigned to those
@@ -108,7 +108,7 @@ private:
   ComPtr<ID3D12Resource> m_constantBufferCS;
 
   uint16_t timercount[ThreadCount];
-  long long timers[ThreadCount*1000];
+  long long timers[ThreadCount*100];
 
   UINT m_srvIndex[ThreadCount]; // Denotes which of the particle buffer resource
                                 // views is the SRV (0 or 1). The UAV is 1 -

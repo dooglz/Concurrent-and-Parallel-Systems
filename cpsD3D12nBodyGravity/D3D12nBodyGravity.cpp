@@ -11,6 +11,13 @@
 
 #include "stdafx.h"
 #include "D3D12nBodyGravity.h"
+#include <fstream>
+#include <string>
+#include <iostream>
+#include <cstring>
+#include <regex>
+#define _CRT_SECURE_NO_WARNINGS
+#pragma warning(disable :4996)
 
 // InterlockedCompareExchange returns the object's value if the 
 // comparison fails.  If it is already 0, then its value won't 
@@ -19,6 +26,8 @@
 
 const float D3D12nBodyGravity::ParticleSpread = 400.0f;
 
+
+std::ofstream csv;
 
 template <typename T> T average(T t[], int n) {
   T s = t[n - 1];
@@ -72,6 +81,20 @@ void D3D12nBodyGravity::OnInit()
   LoadPipeline();
   LoadAssets();
   CreateAsyncContexts();
+
+  time_t rawtime;
+  time(&rawtime);
+  std::string safefilename = std::to_string(ParticleCount) + "_" + std::string(ctime(&rawtime)) + ".csv";
+  std::replace(safefilename.begin(), safefilename.end(), ' ', '_');
+  std::replace(safefilename.begin(), safefilename.end(), ':', '-');
+  safefilename.erase(
+    std::remove(safefilename.begin(), safefilename.end(), '\n'),
+    safefilename.end());
+  safefilename.erase(
+    std::remove(safefilename.begin(), safefilename.end(), '\r'),
+    safefilename.end());
+  csv = std::ofstream(safefilename, std::ofstream::out);
+  std::cout << safefilename << std::endl;
 }
 
 // Load the rendering pipeline dependencies.
@@ -690,6 +713,7 @@ void D3D12nBodyGravity::PopulateCommandList()
   ThrowIfFailed(m_commandList->Close());
 }
 
+static uint32_t aaa = 0;
 DWORD D3D12nBodyGravity::AsyncComputeThreadProc(int threadIndex)
 {
   ID3D12CommandQueue* pCommandQueue = m_computeCommandQueue[threadIndex].Get();
@@ -716,11 +740,21 @@ DWORD D3D12nBodyGravity::AsyncComputeThreadProc(int threadIndex)
     WaitForSingleObject(m_threadFenceEvents[threadIndex], INFINITE);
     const auto n2 = std::chrono::steady_clock::now();
 
-    timers[threadIndex*1000 + timercount[threadIndex]]  = std::chrono::duration_cast<std::chrono::nanoseconds>(n2 - n).count();
+    timers[threadIndex*100 + timercount[threadIndex]]  = std::chrono::duration_cast<std::chrono::nanoseconds>(n2 - n).count();
     timercount[threadIndex]++;
-    if (timercount[threadIndex] >= 1000) {
+
+    if (timercount[threadIndex] >= 100) {
       timercount[threadIndex] = 0;
-      std::cout << average(&timers[threadIndex * 1000],1000) <<std::endl;
+      long long avg = average(&timers[threadIndex * 100], 100);
+      std::cout << avg <<std::endl;
+      if(aaa > 100){
+        csv.close();
+        exit(0);
+      }
+      else {
+        csv << avg << std::endl;
+        aaa++;
+      }
     }
     // Wait for the render thread to be done with the SRV so that
     // the next frame in the simulation can run.
