@@ -1,0 +1,292 @@
+
+\documentclass[conference]{acmsiggraph}
+
+\usepackage{graphicx}
+\graphicspath{{./images/}}
+
+\newcommand{\figuremacroW}[4]{
+	\begin{figure}[h] %[htbp]
+		\centering
+		\includegraphics[width=#4\columnwidth]{#1}
+		\caption[#2]{\textbf{#2} - #3}
+		\label{fig:#1}
+	\end{figure}
+}
+
+\newcommand{\figuremacroF}[4]{
+	\begin{figure*}[t] % [htbp]
+		\centering
+		\includegraphics[width=#4\textwidth]{#1}
+		\caption[#2]{\textbf{#2} - #3}
+		\label{fig:#1}
+	\end{figure*}
+}
+
+\usepackage{afterpage}
+\usepackage{xcolor}
+\definecolor{lbcolor}{rgb}{0.98,0.98,0.98}
+\usepackage{listings}
+
+\lstset{
+	escapeinside={/*@}{@*/},
+	language=C++,
+	%basicstyle=\small\sffamily,
+	%basicstyle=\small\sffamily,	
+	basicstyle=\fontsize{8.5}{12}\selectfont,
+	%basicstyle=\small\ttfamily,
+	%basicstyle=\scriptsize, % \footnotesize,
+	%basicstyle=\footnotesize,
+	%keywordstyle=\color{blue}\bfseries,
+	%basicstyle= \listingsfont,
+	numbers=left,
+	numbersep=2pt,    
+	xleftmargin=2pt,
+	%numberstyle=\tiny,
+	frame=tb,
+	%frame=single,
+	columns=fullflexible,
+	showstringspaces=false,
+	tabsize=4,
+	keepspaces=true,
+	showtabs=false,
+	showspaces=false,
+	%showstringspaces=true
+	backgroundcolor=\color{lbcolor},
+	morekeywords={inline,public,class,private,protected,struct},
+	captionpos=t,
+	lineskip=-0.4em,
+	aboveskip=10pt,
+	%belowskip=50pt,
+	extendedchars=true,
+	breaklines=true,
+	prebreak = \raisebox{0ex}[0ex][0ex]{\ensuremath{\hookleftarrow}},
+	keywordstyle=\color[rgb]{0,0,1},
+	commentstyle=\color[rgb]{0.133,0.545,0.133},
+	stringstyle=\color[rgb]{0.627,0.126,0.941}
+}
+
+\usepackage{lipsum}
+
+\title{N-body Algorithm Performance analysis}
+
+\author{Sam Serrels\\\ 40082367@napier.ac.uk \\
+Edinburgh Napier University\\
+Concurrent and Parallel Systems (SET10108)}
+\pdfauthor{Sam Serrels}
+
+\keywords{NBody Physics}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+\paragraph{The LINPACK benchmark}
+The Linpack algorithm is a popular benchmark in the high performance computing field as a floating point performance measure for ranking supercomputers.
+The Benchmark solves a large system of linear equations using LU decomposition and is typical of many matrix-based scientific computations.
+Linpack started as a Fortran maths processing application, the code for solving linear equations was extracted from the original program and turned into a benchmark.  
+\cite{Dongarra03thelinpack}
+\\
+The Linpack1000 algorithm first generates a random 1000x1000 element matrix, A, and 1000 element vector, b. The elements in A and b are all double precision floating point numbers. 
+Processing then takes place to find the solution, a 1000 element vector, x, such that Ax = b.
+\\
+The algorithm is split into 4 main tasks: generating the initial problem numbers, Gaussian elimination, Solving, and Validation.
+\\
+This report documents the process of analysing a specific sequential Linpack implementation and then converting it to a parallel task.
+
+\paragraph{Related Work}
+As Linpack is used to benchmark large scale multiprocessor supercomputers, there are many parallel versions available. 
+The main difference between implementations is the Gaussian elimination stage, for which there are many algorithms available, some of which can split the task up into separate easily parallelizable chunks of logic. For the scope of this project, changes to the algorithm were avoided wherever possible to keep a fair comparison to the original sequential code.
+
+\paragraph{High-Performance Linpack}
+The most commonly used implantation of Linpack is the HPL implementation, written by the Innovative Computing Laboratory at the University of Tennessee. 
+HPL is an open-source project that aims to provide a toolbox for configuring, optimising, and running the benchmark over a network. 
+It contains many version of the algorithm with plenty of configurable options and for tuning performance to a specific system.
+\\
+The HPL project was used as a rough guide to how the reference algorithm could be modified for this project, however most of the optimisation were beyond the scope of this project.
+
+\paragraph{Project Scope}
+A quick optimisation would be to drop the precision of the algorithm from double, to single precision floating point values.
+Another method would be to swap the original Gaussian elimination algorithm for a different mathematical approach that would lend itself to parallel processing better.
+This project aimed to see how much the original Linpack code can be optimised with parallelization, without changing the core logic of the algorithm or data output so these routes for optimisation were ruled out.
+
+\paragraph{OpenMP}
+The technology for processing the application in parallel was chosen to be OpenMp, an API that abstracts the creation of threads from the user and therefore allows for easier development and better cross platform portability, assuming that the chosen platform has a complier that supports OpenMP.
+This was chosen over creating threads manually, mainly for ease of development reasons, but also because even in a situation that OpenMp is slower than Manual threads, there should still be a noticeable performance increase over the baseline results.
+
+\paragraph{SIMD}
+For an extra level of performance, SIMD instructions were used to gain performance in the most frequently executed parts of the program.
+
+\section{Linpack Gaussian elimination}
+On analysis of execution of the program , it was clear that the vast majority of the execution time was based in the Gaussian Elimination stage.
+
+\figuremacroW
+{HotCode}
+{HotCode}
+{}
+{1.0}
+
+
+
+The Gaussian elimination(GE) stage, works it's way through the array, starting in the "top left corner".
+It examines the entire first column(C) ("Pivot and scale", figure \ref{fig:linpackmat}) and finds the largest value (T).
+The row that contains the largest value(T) becomes the pivot, it is swapped with the topmost row.
+Then, each column is processed, by multiplying it by 1/T and then adding the value of the C column.
+
+Once this is complete, the process restarts but in a subsection of the Matrix A that is one row and column smaller than the previous iteration.
+This continues until the "Bottom right" corner is reached. This process transforms Matrix A into a upper triangular matrix that is in row echelon form.
+
+On further examination, the "Daxpy" function, which his called many times during the GE stage takes up nearly 90\% of the total execution time.
+Daxpy is the function that does the scaling and addition of each column, and is called 424166 times during the full execution of the program.
+
+\paragraph{Daxpy}
+While the Daxpy function is called at a high frequency it contains very few lines of code.
+It's function is to compute Y = S * X + Y, X and Y are elements of two arrays, and S is a scaler value.
+In the program, this is used in a loop to process each column in the A array.
+
+This was the first part of the code to be examined for possible speed-up, as each iteration of the loop doesn't depend on any other iteration.
+Initially Paralleling the loop with OpenMp was attempted, but as the loop will only ever execute a maximum of 1000 times,
+ the overhead time of creating and running threads was always greater than the time of running the loop without threads.
+ 
+\paragraph{Simd Daxpy}
+As no increase of performance could be gained by using more threads, Simd instructions were investigated.
+Daxpy processes N amount of numbers from the two input arrays, using a loop. 
+The numbers to be processed are sequentially laid out in the input arrays, so the logic to convert the loop from processing one item at a time, to multiple, was a simple task.
+Additional lines of code were unavoidable, e.g if the size of N was not divisible by the amount of items that the loop processes in one pass, then the remainder would have to be processed at the end.
+\\
+Simd instructions require aligned memory, therefore the numbers form the input arrays had to be loaded into special aligned containers. 
+This could be avoided if the whole program was converted to use aligned data arrays.
+
+\paragraph{Simd Daxpy Results}
+Both 128bit and 256bit (Largest supported by available hardware) Simd versions of Daxpy were implemented and tested.
+The 128bit version provided no performance gains, due to the overhead of converting input data to aligned data.
+256 bit instructions however provided a significant increase in performance, but only when used with an N parameter greater than around 100. As seen in Figure \ref{fig:SimdCompare}.
+
+
+\paragraph{The Collumn loop}
+Moving back up the call stack to the code area that calls Daxpy, is the loop within the GE function that loops through each column.
+The function of this loop is to set-up the array pointers to send to Daxpy, and swap the pivot row elements to the top.
+Fortunately iterations of this loop could be run independently as each column relies only on the data within the very first column, which has already been processed.
+
+\paragraph{OpenMp Collumn loop}
+Panellising the Collumn loop with OpenMP provided positive results and a large boost to performance. While running threads witin daxy proved unsecsffuly, running threads at the collumn loop level which would each run their own copy of Daxpy simultaneously, proved highly beneficial to processing time (Figure \ref{fig:graph2}, Figure \ref{fig:graph1}, Table \ref{table:results}) 
+
+\paragraph{MDaxpy and Merging Loops}
+An approach taken by similar implementations of the algorithm, is to merge the Column loop and Daxpy into one function (commonly named "MDaxpy"), by either moving the row swap stage to it's own dedicated loop, or by including it into the logic of Daxpy. Practically, this approach does reduce the total number of instructions executed per loop, while the number of loop iterations stays the same. This approach was investigated, but provided no measurable difference in performance while incurring a cost to code complexity, so this line of code restructuring was discarded.
+
+\paragraph{The Pivot loop}
+
+
+\section{Results}
+Different versions of the algorithm were run using a system containing an Intel i7-4790K cpu at 4GHz. Each configuration was run 1000 times, the time taken for each section of the code was taken for each run and the mean average is shown in the following results.\\
+Looking at Table \ref{table:results} and Figure \ref{fig:graph2}, The highest speed-up achieved was 71\% using 256bit Simd and 7 threads. 
+Looking at the trend in general, speed-up increase rapidly drops off after 4 threads. This could be due to the cpu used in this test only having 4 physical cores, hyperthreaded to 8 logical cores.\\
+As previously mentioned 128bit simd instructions do not contribute to ay significant performance gains, while 256bit Simd keeps a constant lead in speedup. Overall the benefits of Simd were vastly overshadowed by the method of multi-threading the Column loop.
+
+\section{System utilisation}
+Comparison of the cpu utilisation, core allocation and thread status for single threaded, 4 threads and 8 threads are given below. For each of these results, the 256bit Simd versions were used. For clarity, only the first 6 runs are shown for each figure.
+
+\paragraph{Single threaded}
+No anomalies were observed here, the Main Thread stays constantly busy( Figure \ref{fig:t4i8simd256conc}). 
+The main thread is reallocated to different physical cores multiple times during execution, this did not have an impact on processing time.
+
+\paragraph{4 threads}
+A near perfect 50\% utilisation was achieved when using 4 threads, with a consistent processing time for each run. 
+The 4 threads were kept constantly busy, and while the core allocation allocation did change frequently, there was enough spare processing resources available to keep the relocation from effecting performance.
+
+\paragraph{8 threads}
+Using the full 8 threads available on the cpu provided a more interesting set of results. The first run struggled to get above 50\% cpu utilisation, with most threads in a waiting state. Looking at the core allocation for this first run, cores 2, 4, and 6 were running two threads at once. This sub-optimal layout resulted in a longer than usual first run. \\
+Looking at the second run, the core allocation is vastly improved, but not perfect as Core 0 is still running 2 threads while core 7 is idle.
+The third run moves to a perfect allocation almost immediately, which ever subsequent run continues.
+\\
+This could be caused by a number of factors, but the primary cause is most likely the operation system's scheduler and the CPUs internal programming.
+Asking for 100\% usage of all available cores on a system means that there is nothing left over for other applications and background tasks.
+This could also be the reason behind 7 threads being the optimal solution, as it leaves 1 logical core for background tasks.
+
+\section{Conclusions}
+\paragraph{Computation time}
+Both Implementations of the Clarke-Wright algorithms produced expected results, with the parallel version producing larger and fewer routes. As for the time taken to calculate, the performance is roughly equal.
+The discrepancies shown in Figure \ref{fig:chart1} when the amount of customers increases beyond 800 is possibly due to optimisations carried out by the Java virtual machine. The total operations carried out is roughly the same for each algorithm, however the arrays are accessed and modified at different times, this is a possible cause for the difference in processing time.
+
+\bibliographystyle{acmsiggraph}
+\bibliography{report}
+\newpage
+\section{Appendix}
+
+\begin{table}[b]
+	{
+		\centering
+		\resizebox{1.0\textwidth}{!}{
+			\begin{minipage}{\textwidth}
+				\centering
+				\begin{tabular}{p{1.7cm}|cccccccccc}
+					Test Name & 1024 & 2048 & 4096 & 8192 & 16384 & 32768 & 65536 & 131072 & 262144 & 524288\\ \hline \\
+					GTX980 512 & 0.233 & 0.321 & 0.652 & 1.145 & 1.974 & 9.219 & 36.789 & 135.558 & 500.509 & 2100.374\\
+					GTX980 256 & 0.222 & 0.307 & 0.612 & 1.065 & 1.937 & 9.162 & 34.392 & 134.494 & 489.240 & 2051.084\\
+					GTX980 128 & 0.132 & 0.194 & 0.296 & 0.716 & 1.891 & 8.721 & 53.158 & 120.636 & 471.306 & 1902.573\\
+					GTX980 64 & 0.132 & 0.172 & 0.277 & 0.645 & 1.862 & 7.259 & 31.745 & 118.255 & 451.687 & 1901.846\\
+					GTX980 32 & 0.110 & 0.157 & 0.289 & 0.640 & 1.833 & 7.255 & 28.108 & 116.337 & 451.348 & 1899.133\\
+					GTX980 16 & 0.150 & 0.224 & 0.464 & 1.468 & 3.561 & 13.522 & 63.056 & 222.645 & 917.328 & 0.000\\
+					\hline\\
+					CPU 1 core &  4.898 & 19.137 & 74.248 & 296.022 & 1185.570 & 4798.358 & 19412.055 & 76464.740 & 314798.033 & 1227484.000\\
+					CPU 2 cores &  2.510 & 9.825 & 39.221 & 155.133 & 613.820 & 2451.838 & 9838.845 & 40324.536 & 167580.294 & 797311.542\\
+					CPU 3 cores &  2.180 & 9.193 & 31.041 & 119.769 & 455.580 & 1821.591 & 7185.361 & 27788.974 & 115910.695 & 496237.950\\
+					CPU 4 cores &  1.674 & 7.044 & 22.304 & 98.299 & 410.325 & 1597.991 & 5535.962 & 21020.147 & 95596.342 & 377586.191\\
+					CPU 5 cores &  2.018 & 6.930 & 25.998 & 89.877 & 375.376 & 1455.549 & 5624.133 & 22419.623 & 92536.925 & 366961.358\\
+					CPU 6 cores &  1.547 & 6.081 & 23.429 & 89.602 & 350.761 & 1350.470 & 5229.090 & 20683.325 & 84305.466 & 350425.495\\
+					CPU 7 cores &  1.538 & 5.044 & 20.425 & 82.377 & 322.066 & 1282.543 & 4918.743 & 19273.623 & 78993.126 & 325729.737\\
+					CPU 8 cores &  1.674 & 5.106 & 18.330 & 72.642 & 285.565 & 1178.308 & 4643.889 & 18259.532 & 72826.053 & 302954.399\\
+					\hline
+				\end{tabular}
+				
+				\caption[Table caption text]{Results of all tests, Times in Milliseconds\\
+					}
+				\label{table:results}
+			\end{minipage} }
+		}
+	\end{table}
+
+
+\figuremacroF
+{GpuTmePerPArticleGraph}
+{GpuTmePerPArticleGraph}
+{}
+{1.0}
+
+
+\figuremacroF
+{CpuEfficiencyGraph}
+{CpuEfficiencyGraph}
+{}
+{1.0}
+	
+\figuremacroF
+{CpuSpeedupGraph}
+{CpuSpeedupGraph}
+{}
+{1.0}
+
+\figuremacroF
+{GpuTmePerPArticle}
+{GpuTmePerPArticle}
+{}
+{1.0}
+
+\figuremacroF
+{CpuSpeedup}
+{CpuSpeedup}
+{}
+{1.0}
+
+\figuremacroF
+{CpuEfficiency}
+{CpuEfficiency}
+{}
+{1.0}
+
+
+
+
+\end{document}
+
