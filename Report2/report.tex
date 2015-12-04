@@ -130,15 +130,34 @@ While running with 2 threads produced the least amount of speedup, it was far ah
 The GPU version of the application is written as a DirectX12 Compute Shader, the output of the computation was passed to a geometry shader which turned the simulation body data into triangles which could then rendered. This method keeps all the work on the GPU with the CPU only used for synchronization. 
 
 \subsection{GPU Computation time}
+The hardware used was a Nvidia GTX 980, which has 16 Multiprocessors, with each with 128 Streaming processors (2048 total cores).\\
 The GPU is well suited for this type of application, as the results show, the GPU is between 15\% and 160\% faster than a cpu running with 8 threads. The GPU kept below 16ms (required for 60fps) computation time for up to 32768 particles (The CPU could only do 2048, using 8 threads).
 
+\subsection{Work Group Size}
+Work is dispatched to the GPU in 3 Dimensional groups of kernels. 
+A group of kernels should theoretically all run at the same time, as N-Body requires no intercommunication or synchronizing between kernels, the group size could be set to any size supported by the hardware.
+This report measures the effect of varying the work group size (Figure \ref{fig:GpuTmePerPArticleGraph} and Figure \ref{fig:GpuTmePerPArticle}).
+\\ 
+Using DirectX 12 a group dimension cannot exceed 65535,Hence the missing value for 16,524288 in the results.
+\\
+Analyzing the data, it seems that a group size of 32 consistently provides the quickest computation time. This could be due to 32 also being the "Warp Size" of the hardware, which is the amount of instructions that are issued at once from a multiprocessor
+
+\section{Future work}
+
+\subsection{Optimization algorithms}
+There are Algorithms that exists to reduce the problem size by using varied forms of approximation.
+By grouping the Bodies into discreet areas (normally a tree structure), groups of bodies can be averaged to one central point for an area. When looping through each body, calculations may only use the averaged position of a collection of bodies, if the area they reside in is far enough away.
+This approach theoretically reduced the complexity from $O(n^2)$ to $O(n\,log \,n)$
+\cite{1986Natur.324..446B}
+
+
 \section{Conclusions}
-\paragraph{Computation time}
 
 
 \bibliographystyle{acmsiggraph}
 \bibliography{report}
-\newpage
+
+\clearpage
 \section{Appendix}
 
 \begin{table}[b]
