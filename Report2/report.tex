@@ -82,132 +82,59 @@ Concurrent and Parallel Systems (SET10108)}
 
 \section{Introduction}
 
-\paragraph{The LINPACK benchmark}
-The Linpack algorithm is a popular benchmark in the high performance computing field as a floating point performance measure for ranking supercomputers.
-The Benchmark solves a large system of linear equations using LU decomposition and is typical of many matrix-based scientific computations.
-Linpack started as a Fortran maths processing application, the code for solving linear equations was extracted from the original program and turned into a benchmark.  
-\cite{Dongarra03thelinpack}
-\\
-The Linpack1000 algorithm first generates a random 1000x1000 element matrix, A, and 1000 element vector, b. The elements in A and b are all double precision floating point numbers. 
-Processing then takes place to find the solution, a 1000 element vector, x, such that Ax = b.
-\\
-The algorithm is split into 4 main tasks: generating the initial problem numbers, Gaussian elimination, Solving, and Validation.
-\\
-This report documents the process of analysing a specific sequential Linpack implementation and then converting it to a parallel task.
+\paragraph{N-body problems}
+An N-body simulation is a system of elements, usually particles which interact in some way with every other element in the system. A common example of this would be particles with mass, which calculate the gravitational acceleration applied to them, other examples include plasma physics, fluid dynamics,
+and molecular dynamics.
+The main complexity of the simulation comes from the operation of each body interacting with every other body, causing a considerable amount of code execution. The Body-Body calculations, such as gravitational acceleration, could be a relatively simple piece of code, but will have to be executed $N^2$ times where $N$ is the number of bodies. Therefore the complexity of an unoptimized simulation is simply $O(n^2)$
 
-\paragraph{Related Work}
-As Linpack is used to benchmark large scale multiprocessor supercomputers, there are many parallel versions available. 
-The main difference between implementations is the Gaussian elimination stage, for which there are many algorithms available, some of which can split the task up into separate easily parallelizable chunks of logic. For the scope of this project, changes to the algorithm were avoided wherever possible to keep a fair comparison to the original sequential code.
+\paragraph{applications}
 
-\paragraph{High-Performance Linpack}
-The most commonly used implantation of Linpack is the HPL implementation, written by the Innovative Computing Laboratory at the University of Tennessee. 
-HPL is an open-source project that aims to provide a toolbox for configuring, optimising, and running the benchmark over a network. 
-It contains many version of the algorithm with plenty of configurable options and for tuning performance to a specific system.
-\\
-The HPL project was used as a rough guide to how the reference algorithm could be modified for this project, however most of the optimisation were beyond the scope of this project.
+\paragraph{Computational Benchmark}
 
 \paragraph{Project Scope}
-A quick optimisation would be to drop the precision of the algorithm from double, to single precision floating point values.
-Another method would be to swap the original Gaussian elimination algorithm for a different mathematical approach that would lend itself to parallel processing better.
-This project aimed to see how much the original Linpack code can be optimised with parallelization, without changing the core logic of the algorithm or data output so these routes for optimisation were ruled out.
+This project investigates the performance of both a CPU and a GPU implemented N-Body Simulation. The CPU implementation was enhanced with the use of multi-threading with OpenMP. Although the initialization code and execution method for each of the two applications is vastly different, the simulation code is the exact same.
 
 \paragraph{OpenMP}
 The technology for processing the application in parallel was chosen to be OpenMp, an API that abstracts the creation of threads from the user and therefore allows for easier development and better cross platform portability, assuming that the chosen platform has a complier that supports OpenMP.
 This was chosen over creating threads manually, mainly for ease of development reasons, but also because even in a situation that OpenMp is slower than Manual threads, there should still be a noticeable performance increase over the baseline results.
 
-\paragraph{SIMD}
-For an extra level of performance, SIMD instructions were used to gain performance in the most frequently executed parts of the program.
-
-\section{Linpack Gaussian elimination}
-On analysis of execution of the program , it was clear that the vast majority of the execution time was based in the Gaussian Elimination stage.
+\section{CPU implementation}
+Analysis of the cpu code revealed expected results, the main simulation loop took up almost 100\% of the execution time. Figure \ref{fig:HotCode} visualizes the main loop and highlights the lines of code which take the most time.
 
 \figuremacroW
 {HotCode}
-{HotCode}
-{}
+{Main Simulation Loop}
+{Measure of execution Time}
 {1.0}
 
+\section{CPU Results}
+Different versions of the program were run using a system containing an Intel i7-4790K cpu at 4GHz. Only the time taken to run a step(or "Tick")of the simualtion was measured, time taken to render the articles was not measured. Each result is a average of 1000 ticks where possible, with high particle counts the sample size was gradually reduced to 10 samples.
 
+\subsection{System utilization}
+Shown in Figure \ref{fig:omp4_65536_util} and Figure \ref{fig:omp8_65536_util}.
+As the mathematical workload of the simulation is straightforward, the cpu utilization was an expected uniform value, corresponding to the amount of threads. With 8 threads, cpu utilization was between 95\% and 100\%. With anything less, the results were almost exactly equal to the ratio of threads to maximum logical cores (4 threads: 50\%, 1 thread: 12.5\%, 2 threads: 25\% ).
 
-The Gaussian elimination(GE) stage, works it's way through the array, starting in the "top left corner".
-It examines the entire first column(C) ("Pivot and scale", figure \ref{fig:linpackmat}) and finds the largest value (T).
-The row that contains the largest value(T) becomes the pivot, it is swapped with the topmost row.
-Then, each column is processed, by multiplying it by 1/T and then adding the value of the C column.
+\subsection{Core occupancy}
+Shown in Figure \ref{fig:omp1_4096_occu}, Figure \ref{fig:omp4_4096_occu}, and Figure \ref{fig:omp8_4096_occu}.
+The threads used in the program jumped between logical cores frequently, even when running the program for long periods of time with large particle counts. It is not clear how much of a performance hit these transfers have caused on the application. Changing OpenMP scheduling parameters did not seem to produce a noticeable difference to this.
 
-Once this is complete, the process restarts but in a subsection of the Matrix A that is one row and column smaller than the previous iteration.
-This continues until the "Bottom right" corner is reached. This process transforms Matrix A into a upper triangular matrix that is in row echelon form.
+\subsection{Speedup}
+Shown in Figure \ref{fig:CpuSpeedupGraph} and Figure \ref{fig:CpuSpeedup}
+For above 2048 particles, speedup is roughly ranked by threads count, with 8 threads producing the highest speedup. A thread count of 4 produced a fluctuating speedup, coming close to beating 6 threads at times. This could be due to the CPU having 4 physical cores, which are hyper-threaded to 8 logical cores.
 
-On further examination, the "Daxpy" function, which his called many times during the GE stage takes up nearly 90\% of the total execution time.
-Daxpy is the function that does the scaling and addition of each column, and is called 424166 times during the full execution of the program.
+\subsection{Efficiency}
+Shown in Figure \ref{fig:CpuEfficiencyGraph} and Figure \ref{fig:CpuEfficiency}.
+While running with 2 threads produced the least amount of speedup, it was far ahead of any other thread count in terms of efficiency. This was true for all but the largest particle count of 524288, where both 3 and 4 threads were more efficient and than 2. This is most probably an artifact of the CPU/Operating System thread scheduling when put under heavy usage.
 
-\paragraph{Daxpy}
-While the Daxpy function is called at a high frequency it contains very few lines of code.
-It's function is to compute Y = S * X + Y, X and Y are elements of two arrays, and S is a scaler value.
-In the program, this is used in a loop to process each column in the A array.
+\section{GPU implementation}
+The GPU version of the application is written as a DirectX12 Compute Shader, the output of the computation was passed to a geometry shader which turned the simulation body data into triangles which could then rendered. This method keeps all the work on the GPU with the CPU only used for synchronization. 
 
-This was the first part of the code to be examined for possible speed-up, as each iteration of the loop doesn't depend on any other iteration.
-Initially Paralleling the loop with OpenMp was attempted, but as the loop will only ever execute a maximum of 1000 times,
- the overhead time of creating and running threads was always greater than the time of running the loop without threads.
- 
-\paragraph{Simd Daxpy}
-As no increase of performance could be gained by using more threads, Simd instructions were investigated.
-Daxpy processes N amount of numbers from the two input arrays, using a loop. 
-The numbers to be processed are sequentially laid out in the input arrays, so the logic to convert the loop from processing one item at a time, to multiple, was a simple task.
-Additional lines of code were unavoidable, e.g if the size of N was not divisible by the amount of items that the loop processes in one pass, then the remainder would have to be processed at the end.
-\\
-Simd instructions require aligned memory, therefore the numbers form the input arrays had to be loaded into special aligned containers. 
-This could be avoided if the whole program was converted to use aligned data arrays.
-
-\paragraph{Simd Daxpy Results}
-Both 128bit and 256bit (Largest supported by available hardware) Simd versions of Daxpy were implemented and tested.
-The 128bit version provided no performance gains, due to the overhead of converting input data to aligned data.
-256 bit instructions however provided a significant increase in performance, but only when used with an N parameter greater than around 100. As seen in Figure \ref{fig:SimdCompare}.
-
-
-\paragraph{The Collumn loop}
-Moving back up the call stack to the code area that calls Daxpy, is the loop within the GE function that loops through each column.
-The function of this loop is to set-up the array pointers to send to Daxpy, and swap the pivot row elements to the top.
-Fortunately iterations of this loop could be run independently as each column relies only on the data within the very first column, which has already been processed.
-
-\paragraph{OpenMp Collumn loop}
-Panellising the Collumn loop with OpenMP provided positive results and a large boost to performance. While running threads witin daxy proved unsecsffuly, running threads at the collumn loop level which would each run their own copy of Daxpy simultaneously, proved highly beneficial to processing time (Figure \ref{fig:graph2}, Figure \ref{fig:graph1}, Table \ref{table:results}) 
-
-\paragraph{MDaxpy and Merging Loops}
-An approach taken by similar implementations of the algorithm, is to merge the Column loop and Daxpy into one function (commonly named "MDaxpy"), by either moving the row swap stage to it's own dedicated loop, or by including it into the logic of Daxpy. Practically, this approach does reduce the total number of instructions executed per loop, while the number of loop iterations stays the same. This approach was investigated, but provided no measurable difference in performance while incurring a cost to code complexity, so this line of code restructuring was discarded.
-
-\paragraph{The Pivot loop}
-
-
-\section{Results}
-Different versions of the algorithm were run using a system containing an Intel i7-4790K cpu at 4GHz. Each configuration was run 1000 times, the time taken for each section of the code was taken for each run and the mean average is shown in the following results.\\
-Looking at Table \ref{table:results} and Figure \ref{fig:graph2}, The highest speed-up achieved was 71\% using 256bit Simd and 7 threads. 
-Looking at the trend in general, speed-up increase rapidly drops off after 4 threads. This could be due to the cpu used in this test only having 4 physical cores, hyperthreaded to 8 logical cores.\\
-As previously mentioned 128bit simd instructions do not contribute to ay significant performance gains, while 256bit Simd keeps a constant lead in speedup. Overall the benefits of Simd were vastly overshadowed by the method of multi-threading the Column loop.
-
-\section{System utilisation}
-Comparison of the cpu utilisation, core allocation and thread status for single threaded, 4 threads and 8 threads are given below. For each of these results, the 256bit Simd versions were used. For clarity, only the first 6 runs are shown for each figure.
-
-\paragraph{Single threaded}
-No anomalies were observed here, the Main Thread stays constantly busy( Figure \ref{fig:t4i8simd256conc}). 
-The main thread is reallocated to different physical cores multiple times during execution, this did not have an impact on processing time.
-
-\paragraph{4 threads}
-A near perfect 50\% utilisation was achieved when using 4 threads, with a consistent processing time for each run. 
-The 4 threads were kept constantly busy, and while the core allocation allocation did change frequently, there was enough spare processing resources available to keep the relocation from effecting performance.
-
-\paragraph{8 threads}
-Using the full 8 threads available on the cpu provided a more interesting set of results. The first run struggled to get above 50\% cpu utilisation, with most threads in a waiting state. Looking at the core allocation for this first run, cores 2, 4, and 6 were running two threads at once. This sub-optimal layout resulted in a longer than usual first run. \\
-Looking at the second run, the core allocation is vastly improved, but not perfect as Core 0 is still running 2 threads while core 7 is idle.
-The third run moves to a perfect allocation almost immediately, which ever subsequent run continues.
-\\
-This could be caused by a number of factors, but the primary cause is most likely the operation system's scheduler and the CPUs internal programming.
-Asking for 100\% usage of all available cores on a system means that there is nothing left over for other applications and background tasks.
-This could also be the reason behind 7 threads being the optimal solution, as it leaves 1 logical core for background tasks.
+\subsection{GPU Computation time}
+The GPU is well suited for this type of application, as the results show, the GPU is between 15\% and 160\% faster than a cpu running with 8 threads. The GPU kept below 16ms (required for 60fps) computation time for up to 32768 particles (The CPU could only do 2048, using 8 threads).
 
 \section{Conclusions}
 \paragraph{Computation time}
-Both Implementations of the Clarke-Wright algorithms produced expected results, with the parallel version producing larger and fewer routes. As for the time taken to calculate, the performance is roughly equal.
-The discrepancies shown in Figure \ref{fig:chart1} when the amount of customers increases beyond 800 is possibly due to optimisations carried out by the Java virtual machine. The total operations carried out is roughly the same for each algorithm, however the arrays are accessed and modified at different times, this is a possible cause for the difference in processing time.
+
 
 \bibliographystyle{acmsiggraph}
 \bibliography{report}
@@ -249,29 +176,28 @@ The discrepancies shown in Figure \ref{fig:chart1} when the amount of customers 
 
 
 \figuremacroF
-{GpuTmePerPArticleGraph}
-{GpuTme Per Particle}
-{Varying Workgroup size}
+{cpuperf1}
+{Cpu Compute time for less than 4096 Particles}
+{Time Measured in Nanoseconds}
 {1.0}
-
 
 \figuremacroF
-{CpuEfficiencyGraph}
-{Cpu Efficiency}
-{Speedup measured against core count}
+{cpuperf2}
+{Cpu Compute time for greater than 65536 Particles}
+{Time Measured in Nanoseconds}
 {1.0}
-	
 
-\figuremacroF
-{GpuTmePerPArticle}
-{GpuTme Per Particle}
-{Varying Workgroup size}
-{1.0}
 
 \figuremacroF
 {CpuSpeedupGraph}
 {Cpu Speedup}
 {}
+{1.0}
+
+\figuremacroF
+{CpuEfficiencyGraph}
+{Cpu Efficiency}
+{Speedup measured against core count}
 {1.0}
 
 
@@ -287,6 +213,48 @@ The discrepancies shown in Figure \ref{fig:chart1} when the amount of customers 
 {Speedup measured against core count}
 {1.0}
 
+\figuremacroF
+{omp1_4096_occu}
+{Cpu Occupancy}
+{1 Core, 4096 Particles}
+{1.0}
+
+\figuremacroF
+{omp4_4096_occu}
+{Cpu Occupancy}
+{4 Cores, 4096 Particles}
+{1.0}
+
+\figuremacroF
+{omp8_4096_occu}
+{Cpu Occupancy}
+{8 Cores, 4096 Particles}
+{1.0}
+
+\figuremacroF
+{omp4_65536_util}
+{Cpu Utilization}
+{4 Cores, 65536 Particles}
+{1.0}
+
+\figuremacroF
+{omp8_65536_util}
+{Cpu Utilization}
+{8 Cores, 65536 Particles}
+{1.0}
+
+
+\figuremacroF
+{GpuTmePerPArticleGraph}
+{GpuTme Per Particle}
+{Varying Workgroup size}
+{1.0}
+
+\figuremacroF
+{GpuTmePerPArticle}
+{GpuTme Per Particle}
+{Varying Workgroup size}
+{1.0}
 
 
 
