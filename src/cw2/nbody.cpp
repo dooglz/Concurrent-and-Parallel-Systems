@@ -35,7 +35,7 @@ void sim::Init() {
                          (rand() % 1000) - 500);
     bodiesptrs[i] = &bodies[i];
   }
-  omp_set_num_threads(4);
+  omp_set_num_threads(CORECOUNT);
  // Octree* oc = new Octree();
 
 
@@ -44,7 +44,7 @@ void sim::Init() {
 }
 long long sim::Tick() {
   const auto n = std::chrono::steady_clock::now();
-  const float delta = 0.1;
+  const float delta = 2.1;
 
 // Simulate all particles
 #pragma omp parallel for

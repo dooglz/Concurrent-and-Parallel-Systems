@@ -314,7 +314,7 @@ void D3D12nBodyGravity::LoadAssets()
 
   // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
   // the command list that references it has finished executing on the GPU.
-  // We will flush the GPU at the end of this method to ensure the resource is not
+  // We will flush the GPU at the end of this method to ensure the resource is not256
   // prematurely destroyed.
   ComPtr<ID3D12Resource> constantBufferCSUpload;
 
@@ -340,7 +340,7 @@ void D3D12nBodyGravity::LoadAssets()
 
     ConstantBufferCS constantBufferCS = {};
     constantBufferCS.param[0] = ParticleCount;
-    constantBufferCS.param[1] = int(ceil(ParticleCount / 128.0f));
+    constantBufferCS.param[1] = int(ceil(ParticleCount / 16.0f));
     constantBufferCS.paramf[0] = 0.1f;
     constantBufferCS.paramf[1] = 1.0f;
 
@@ -398,7 +398,7 @@ void D3D12nBodyGravity::CreateVertexBuffer()
   vertices.resize(ParticleCount);
   for (UINT i = 0; i < ParticleCount; i++)
   {
-    vertices[i].color = XMFLOAT4(1.0f, 1.0f, 0.2f, 1.0f);
+    vertices[i].color = XMFLOAT4(1.0f, 1.0f, 0.2f, 0.1f);
   }
   const UINT bufferSize = ParticleCount * sizeof(ParticleVertex);
 
@@ -680,7 +680,7 @@ void D3D12nBodyGravity::PopulateCommandList()
   m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
   // Record commands.
-  const float clearColor[] = { 0.0f, 0.0f, 0.1f, 0.0f };
+  const float clearColor[] = { 1.0f, 1.0f, 1.0f, 0.0f };
   m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
   // Render the particles.
@@ -740,20 +740,20 @@ DWORD D3D12nBodyGravity::AsyncComputeThreadProc(int threadIndex)
     WaitForSingleObject(m_threadFenceEvents[threadIndex], INFINITE);
     const auto n2 = std::chrono::steady_clock::now();
 
-    timers[threadIndex*100 + timercount[threadIndex]]  = std::chrono::duration_cast<std::chrono::nanoseconds>(n2 - n).count();
+    timers[threadIndex*4 + timercount[threadIndex]]  = std::chrono::duration_cast<std::chrono::nanoseconds>(n2 - n).count();
     timercount[threadIndex]++;
 
-    if (timercount[threadIndex] >= 100) {
+    if (timercount[threadIndex] >= 4) {
       timercount[threadIndex] = 0;
-      long long avg = average(&timers[threadIndex * 100], 100);
+      long long avg = average(&timers[threadIndex * 4], 4);
       std::cout << avg <<std::endl;
-      if(aaa > 100){
-        csv.close();
-        exit(0);
+      if(aaa > 20){
+      //  csv.close();
+     //   exit(0);
       }
       else {
-        csv << avg << std::endl;
-        aaa++;
+     //   csv << avg << std::endl;
+      //  aaa++;
       }
     }
     // Wait for the render thread to be done with the SRV so that
@@ -812,7 +812,7 @@ void D3D12nBodyGravity::Simulate(UINT threadIndex)
   pCommandList->SetComputeRootDescriptorTable(RootParameterSRV, srvHandle);
   pCommandList->SetComputeRootDescriptorTable(RootParameterUAV, uavHandle);
 
-  pCommandList->Dispatch(static_cast<int>(ceil(ParticleCount / 128.0f)), 1, 1);
+  pCommandList->Dispatch(static_cast<int>(ceil(ParticleCount / 16.0f)), 1, 1);
 
   pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pUavResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 }

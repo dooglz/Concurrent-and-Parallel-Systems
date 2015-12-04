@@ -87,16 +87,15 @@ An N-body simulation is a system of elements, usually particles which interact i
 and molecular dynamics.
 The main complexity of the simulation comes from the operation of each body interacting with every other body, causing a considerable amount of code execution. The Body-Body calculations, such as gravitational acceleration, could be a relatively simple piece of code, but will have to be executed $N^2$ times where $N$ is the number of bodies. Therefore the complexity of an unoptimized simulation is simply $O(n^2)$
 
-\paragraph{applications}
-
-\paragraph{Computational Benchmark}
-
 \paragraph{Project Scope}
 This project investigates the performance of both a CPU and a GPU implemented N-Body Simulation. The CPU implementation was enhanced with the use of multi-threading with OpenMP. Although the initialization code and execution method for each of the two applications is vastly different, the simulation code is the exact same.
 
 \paragraph{OpenMP}
 The technology for processing the application in parallel was chosen to be OpenMp, an API that abstracts the creation of threads from the user and therefore allows for easier development and better cross platform portability, assuming that the chosen platform has a complier that supports OpenMP.
 This was chosen over creating threads manually, mainly for ease of development reasons, but also because even in a situation that OpenMp is slower than Manual threads, there should still be a noticeable performance increase over the baseline results.
+
+\paragraph{Simulation Implementation}
+A simplified version of a gravitational simulation was used, each particle has a mass of 1. A further method was added to attract all bodies back to the center. This simulation was chosen for visual appeal, as only the computational time was being measured.
 
 \section{CPU implementation}
 Analysis of the cpu code revealed expected results, the main simulation loop took up almost 100\% of the execution time. Figure \ref{fig:HotCode} visualizes the main loop and highlights the lines of code which take the most time.
@@ -105,10 +104,16 @@ Analysis of the cpu code revealed expected results, the main simulation loop too
 {HotCode}
 {Main Simulation Loop}
 {Measure of execution Time}
-{1.0}
+{0.95}
+
+\figuremacroW
+{cpusim}
+{Cpu Simulation}
+{8096 Particles}
+{0.95}
 
 \section{CPU Results}
-Different versions of the program were run using a system containing an Intel i7-4790K cpu at 4GHz. Only the time taken to run a step(or "Tick")of the simualtion was measured, time taken to render the articles was not measured. Each result is a average of 1000 ticks where possible, with high particle counts the sample size was gradually reduced to 10 samples.
+Different versions of the program were run using a system containing an Intel i7-4790K cpu at 4GHz. Only the time taken to run a step(or "Tick")of the simualtion was measured, time taken to render the particles was not measured. Each result is a average of 1000 ticks where possible, with high particle counts the sample size was gradually reduced to 10 samples.
 
 \subsection{System utilization}
 Shown in Figure \ref{fig:omp4_65536_util} and Figure \ref{fig:omp8_65536_util}.
@@ -120,7 +125,7 @@ The threads used in the program jumped between logical cores frequently, even wh
 
 \subsection{Speedup}
 Shown in Figure \ref{fig:CpuSpeedupGraph} and Figure \ref{fig:CpuSpeedup}
-For above 2048 particles, speedup is roughly ranked by threads count, with 8 threads producing the highest speedup. A thread count of 4 produced a fluctuating speedup, coming close to beating 6 threads at times. This could be due to the CPU having 4 physical cores, which are hyper-threaded to 8 logical cores.
+for above 2048 particles, speedup is roughly ranked by threads count, with 8 threads producing the highest speedup. A thread count of 4 produced a fluctuating speedup, coming close to beating 6 threads at times. This could be due to the CPU having 4 physical cores, which are hyper-threaded to 8 logical cores.
 
 \subsection{Efficiency}
 Shown in Figure \ref{fig:CpuEfficiencyGraph} and Figure \ref{fig:CpuEfficiency}.
@@ -128,6 +133,13 @@ While running with 2 threads produced the least amount of speedup, it was far ah
 
 \section{GPU implementation}
 The GPU version of the application is written as a DirectX12 Compute Shader, the output of the computation was passed to a geometry shader which turned the simulation body data into triangles which could then rendered. This method keeps all the work on the GPU with the CPU only used for synchronization. 
+As the velocity data is already on the GPU and accessible by the renderer, it was used to colour the particles, faster particles are rendered with a brighter colour.
+
+\figuremacroW
+{gpusim2}
+{Gpu Simulation}
+{65536 Particles}
+{1.0}
 
 \subsection{GPU Computation time}
 The hardware used was a Nvidia GTX 980, which has 16 Multiprocessors, with each with 128 Streaming processors (2048 total cores).\\
@@ -138,21 +150,24 @@ Work is dispatched to the GPU in 3 Dimensional groups of kernels.
 A group of kernels should theoretically all run at the same time, as N-Body requires no intercommunication or synchronizing between kernels, the group size could be set to any size supported by the hardware.
 This report measures the effect of varying the work group size (Figure \ref{fig:GpuTmePerPArticleGraph} and Figure \ref{fig:GpuTmePerPArticle}).
 \\ 
-Using DirectX 12 a group dimension cannot exceed 65535,Hence the missing value for 16,524288 in the results.
+Using DirectX 12 a group dimension cannot exceed 65535, hence the missing value for (16,524288) in the results.
 \\
 Analyzing the data, it seems that a group size of 32 consistently provides the quickest computation time. This could be due to 32 also being the "Warp Size" of the hardware, which is the amount of instructions that are issued at once from a multiprocessor
 
 \section{Future work}
 
 \subsection{Optimization algorithms}
-There are Algorithms that exists to reduce the problem size by using varied forms of approximation.
+There are existing algorithms to reduce the problem size by using varied forms of approximation.
+
 By grouping the Bodies into discreet areas (normally a tree structure), groups of bodies can be averaged to one central point for an area. When looping through each body, calculations may only use the averaged position of a collection of bodies, if the area they reside in is far enough away.
 This approach theoretically reduced the complexity from $O(n^2)$ to $O(n\,log \,n)$
 \cite{1986Natur.324..446B}
 
+Implementing the method for creating and traversing a tree of bodies is relatively straightforward on the CPU and can have large performance gains. Implementing the same thing on a GPU would be a harder task \cite{goodcite}. Parallelizing the tree creation stage would require frequent synchronization, as the dimensions and state of the tree change for every body that is added to it.
 
 \section{Conclusions}
-
+This report evaluated the performance of two similar implantations of an N-Body particle simulation. The parallel performance of a CPU was compared to that of the GPU and it was found that the GPU is significantly faster at this task. Using threads on the CPU was found to be worthwhile, but the upper limit of performance was still significantly behind that of the GPU.
+N-Body simulations are very easily converted from sequential to parallel, due to there being no dependencies between each bodies calculations, therefore this type if simulation provides a good benchmark of total available compute resources.
 
 \bibliographystyle{acmsiggraph}
 \bibliography{report}

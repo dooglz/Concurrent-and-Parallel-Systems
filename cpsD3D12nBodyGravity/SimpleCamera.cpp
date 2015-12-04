@@ -101,16 +101,16 @@ void SimpleCamera::Update(float elapsedSeconds)
 
 XMMATRIX SimpleCamera::GetViewMatrix()
 {
-	//return XMMatrixLookToRH(XMLoadFloat3(&m_position), XMLoadFloat3(&m_lookDirection), XMLoadFloat3(&m_upDirection));
+	return XMMatrixLookToRH(XMLoadFloat3(&m_position), XMLoadFloat3(&m_lookDirection), XMLoadFloat3(&m_upDirection));
 
-  return XMMatrixLookToRH(XMVectorSet(0, 0, 1010.0f,0), XMVectorSet(0, 0, -1.0f, 0), XMVectorSet(0, 1.0f, 0, 0));
+ // return XMMatrixLookToRH(XMVectorSet(0, 0, 1010.0f,0), XMVectorSet(0, 0, -1.0f, 0), XMVectorSet(0, 1.0f, 0, 0));
 
 }
 
 XMMATRIX SimpleCamera::GetProjectionMatrix(float fov, float aspectRatio, float nearPlane, float farPlane)
 {
-	//return XMMatrixPerspectiveFovRH(fov, aspectRatio, nearPlane, farPlane);
-  return XMMatrixOrthographicRH(2000.0f, 2000.0f, 0.1f, 1100.0f);
+	return XMMatrixPerspectiveFovRH(fov, aspectRatio, nearPlane, farPlane);
+  //return XMMatrixOrthographicRH(2000.0f, 2000.0f, 0.1f, 1100.0f);
   //glm::ortho(-1000.0, 1000.0, -1000.0, 1000.0, 0.1, 1000.0);
 }
 

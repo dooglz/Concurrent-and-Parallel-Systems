@@ -13,7 +13,7 @@ const static float softening	= 1e-9f;
 static float g_fG				= 6.67300e-11f * 10000.0f;
 static float g_fParticleMass	= g_fG * 10000.0f * 10000.0f;
 
-#define blocksize 128
+#define blocksize 16
 groupshared float4 sharedPos[blocksize];
 
 //
@@ -98,14 +98,37 @@ void CSMain(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid
   vel.xyz += accel.xyz * g_paramf.x;		//deltaTime;
   vel.xyz *= g_paramf.y;					//damping;
 
-  vel.xyz -= 0.000001f *  pos.xyz;//tend back to middle
+  vel.xyz -= 0.00001f *  pos.xyz;//tend back to middle
 
   pos.xyz += vel.xyz * g_paramf.x;		//deltaTime;
 
 
-  pos.xyz.x = clamp(pos.xyz.x, -1000.0f, 1000.0f);
-  pos.xyz.y = clamp(pos.xyz.y, -1000.0f, 1000.0f);
-  pos.xyz.z = clamp(pos.xyz.z, -1000.0f, 1000.0f);
+  if(pos.xyz.x > 1000.0f) {
+    pos.xyz.x = 1000.0f;
+    vel.xyz = float4(0.0f, 0.0f, 0.0f, 0.0f);
+  }else   if (pos.xyz.x < -1000.0f) {
+    pos.xyz.x = -1000.0f;
+    vel.xyz = float4(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  else   if (pos.xyz.y > 1000.0f) {
+    pos.xyz.y = 1000.0f;
+    vel.xyz = float4(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  else   if (pos.xyz.y < -1000.0f) {
+    pos.xyz.y = -1000.0f;
+    vel.xyz = float4(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  else   if (pos.xyz.z > 1000.0f) {
+    pos.xyz.z = 1000.0f;
+    vel.xyz = float4(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  else   if (pos.xyz.z < -1000.0f) {
+    pos.xyz.z = -1000.0f;
+    vel.xyz = float4(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+ // pos.xyz.x = clamp(pos.xyz.x, -1000.0f, 1000.0f);
+ // pos.xyz.y = clamp(pos.xyz.y, -1000.0f, 1000.0f);
+ // pos.xyz.z = clamp(pos.xyz.z, -1000.0f, 1000.0f);
 
 
   if (DTid.x < g_param.x)

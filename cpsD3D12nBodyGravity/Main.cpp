@@ -32,10 +32,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     ParticleCount = (unsigned int)std::stoi(__argv[1]);
   }
   else {
-    ParticleCount = 8000;
+    ParticleCount = 45536;
   }
   std::cout << "Particle count is: " << ParticleCount << std::endl;
 
-  D3D12nBodyGravity sample(1280, 1280, L"D3D12 n-Body Gravity Simulation");
+  D3D12nBodyGravity sample(512, 512, L"D3D12 n-Body Gravity Simulation");
   return Win32Application::Run(&sample, hInstance, nCmdShow);
 }
